@@ -3,8 +3,8 @@ import os
 from matplotlib.pyplot import cm
 
 # some input
-files = ['mx.004.MSEED',
-         'mx.001.MSEED']
+files = ['mseed/mx.004.MSEED',
+         'mseed/mx.001.MSEED']
 freq_min = 0.05  # 0.1
 freq_max = 1.0  # 10.0
 corners = 10
@@ -58,5 +58,4 @@ for file in files:
                               dbscale=False,
                               clip=[lower_clip, upper_clip],
                               per_lap=olap,
-                              log=log_freq,
-                              freq_min=freq_min, freq_max=freq_max)
+                              log=log_freq)

@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 # input:
-indir = 'example_data_quake3/'
+indir = 'jsonl/'
 # handling overlaps:
 interpolation_samples = 0
 # 0: Do not interpolate, n: interpolate n samples
@@ -45,10 +45,9 @@ for t in traces:
         s_z = Stream()
         station_previous = station
     f = open(t, 'r')
-    f = f.readlines()
+    f = json.loads(f.read())
 
-    for rec in f:
-        d = json.loads(rec)
+    for d in f:
         tr = Trace()
         tr.stats.sampling_rate = d['sr']
         tr.stats.starttime = UTCDateTime(d['device_t']) -\
