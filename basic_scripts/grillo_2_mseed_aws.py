@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 # input:
-indir = 'data_mount/grillo/records/country_code=mx/device_id=*/year=2020/month=01/day=28/hour=19/'
+indir = '/home/ubuntu/data_mount/grillo/records/country_code=mx/device_id=001/year=2020/month=01/day=28/hour=*/'
 # handling overlaps:
 interpolation_samples = 0
 # 0: Do not interpolate, n: interpolate n samples
@@ -27,13 +27,13 @@ def clean_up(stream_in):
 
 
 traces = glob(os.path.join(indir, '*jsonl'))
-
 traces.sort()
 station_previous = 'nostation'
 for t in traces:
     print(t)
     network = 'mx'
-    station = t.split('/')[4][-3:]
+    inf = t.split('/')
+    station = list(filter(lambda x: 'device_id' in x, inf))[0].split('=')[-1]
     print(station)
     if station != station_previous:
         if station_previous != 'nostation':
