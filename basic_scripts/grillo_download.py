@@ -9,15 +9,15 @@ output_folder = 'jsonl'
 # country: mx for Mexico
 country = 'mx'
 # date to check for devices
-date_utc = '2020-01-28 00:00:00'
+date_utc = '2020-01-01 00:00:00'
 # start and endtime of window of interest
-start_date_utc = '2020-01-28 19:00:00'
-end_date_utc = '2020-01-28 20:00:00'
+start_date_utc = '2020-01-01 00:00:00'
+end_date_utc = '2020-01-05 00:00:00'
 # client
 data_client = AwsDataClient(country)  # mx = for Mexico
 # either all available devices or a string list of device names
 # devices = data_client.get_devices_as_of_date(date_utc)
-devices = ['004', '001']
+devices = ['029']
 
 
 # script:
