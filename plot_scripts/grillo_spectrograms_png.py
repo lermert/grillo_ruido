@@ -1,12 +1,15 @@
 from obspy import read, UTCDateTime
 import os
 import matplotlib.pyplot as plt
+from glob import glob
 
 # Input
-# Files: Input as lists. All files in one list will be plotted together
-files_list = [['mseed/mx.001.MSEED', 'mseed/mx.004.MSEED']]
+# All files in one list will be plotted together
+files_list = glob('/home/ubuntu/data_mount/ruido/panama_quake/mx.029*.MSEED')
+files_list.extend(glob('/home/ubuntu/data_mount/ruido/panama_quake/G.UNM.MSEED'))
+
 freq_min = 0.05  # 0.1
-freq_max = 1.0  # 10.0
+freq_max = 3.0  # 10.0
 corners = 10
 zerophase = False
 # time: starttime and duration of spectrogram
@@ -21,8 +24,6 @@ lower_clip = 0  # 0.25
 upper_clip = 1  # 0.75
 #  logarithmic frequency axis
 log_freq = True
-# channels
-cha = ['ENX', 'ENY', 'ENZ']
 # figure size
 fgsz = (16, 9)
 
@@ -35,37 +36,35 @@ def apply_filter(trace):
                  corners=corners, zerophase=zerophase)
 
 
-for files in files_list:
 
-    fig, axarray = plt.subplots(nrows=len(files), ncols=3, figsize=fgsz,
+fig, axarray = plt.subplots(nrows=len(files_list), ncols=3, figsize=fgsz,
                                 sharey='all')
 
-    sta = os.path.basename(files[0]).split('.')[1]
-    net = os.path.basename(files[0]).split('.')[0]
-    flnmstr = net
-    for i in range(len(files)):
-        flnmstr += '.' + os.path.basename(files[i]).split('.')[1]
-        tr = read(files[i])
-        tr = tr.trim(starttime=t0, endtime=t0 + window_length_for_spectrogram)
-        apply_filter(tr)
+sta = os.path.basename(files_list[0]).split('.')[1]
+net = os.path.basename(files_list[0]).split('.')[0]
+flnmstr = net
+for i in range(len(files_list)):
+    flnmstr += '.' + os.path.basename(files_list[i]).split('.')[1]
+    tr = read(files_list[i])
+    tr = tr.trim(starttime=t0, endtime=t0 + window_length_for_spectrogram)
+    apply_filter(tr)
+    tr.merge(fill_value=0)
 
-        for j in range(3):
-            tr_p = tr.select(channel=cha[j])
-            tr_p.merge(fill_value=0)
-            ax = axarray[i, j]
-            tr_p.spectrogram(cmap=plt.cm.viridis,
+    for j, tr_p in enumerate(tr):
+        ax = axarray[i, j]
+        tr_p.spectrogram(cmap=plt.cm.viridis,
                              wlen=window_length_for_fft, mult=mult,
                              dbscale=False,
                              clip=[lower_clip, upper_clip],
                              per_lap=olap,
                              log=log_freq,
                              axes=ax)
-            if i == len(files) - 1:
-                ax.set_xlabel('Time (s) after starttime')
-            if j == 0:
-                ax.set_ylabel('Frequency (Hz)')
-            ax.set_ylim([freq_min, freq_max])
-            ax.set_title(tr_p[0].id)
-    plt.tight_layout()
-    figname = '{}.{}.png'.format(flnmstr, t0.strftime("%Y.%m.%dT%H-%M-%s"))
-    fig.savefig(figname, dpi=150)
+        if i == len(files_list) - 1:
+            ax.set_xlabel('Time (s) after starttime')
+        if j == 0:
+            ax.set_ylabel('Frequency (Hz)')
+        ax.set_ylim([freq_min, freq_max])
+        ax.set_title(tr_p.id)
+plt.tight_layout()
+figname = '{}.{}.png'.format(flnmstr, t0.strftime("%Y.%m.%dT%H-%M-%s"))
+fig.savefig(figname, dpi=150)
