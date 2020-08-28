@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 # input:
-indir = 'jsonl/'
+indir = "jsonl"#'/home/ubuntu/data_mount/grillo/records/country_code=mx/device_id=001/year=2020/month=01/day=28/hour=*/'
 # handling overlaps:
 interpolation_samples = 0
 # 0: Do not interpolate, n: interpolate n samples
@@ -28,13 +28,15 @@ def clean_up(stream_in):
 
 traces = glob(os.path.join(indir, '*jsonl'))
 traces.sort()
-station_previous = ''
+station_previous = 'nostation'
 for t in traces:
     print(t)
-    network, station = os.path.basename(t).split('.')[0: 2]
-
+    network = 'mx'
+    inf = t.split('/')
+    station="029" #station = list(filter(lambda x: 'device_id' in x, inf))[0].split('=')[-1]
+    print(station)
     if station != station_previous:
-        if station_previous != '':
+        if station_previous != 'nostation':
             s_out = Stream()
             for stream in [s_x, s_y, s_z]:
                 s_out += clean_up(stream)
@@ -45,9 +47,10 @@ for t in traces:
         s_z = Stream()
         station_previous = station
     f = open(t, 'r')
-    f = json.loads(f.read())
+    f = f.readlines()
 
-    for d in f:
+    for rec in f:
+        d = json.loads(rec)
         tr = Trace()
         tr.stats.sampling_rate = d['sr']
         tr.stats.starttime = UTCDateTime(d['device_t']) -\

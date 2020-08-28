@@ -13,12 +13,14 @@
 # --------------------------------------------------------------------
 
 import warnings
+import pycwt
 from scipy.signal import iirfilter
 try:
     from scipy.signal import zpk2sos
 except ImportError:
     from obspy.signal._sosfilt import _zpk2sos as zpk2sos
 from scipy.signal import cheb2ord, cheby2
+import numpy as np
 
 """
 Various Seismogram Filtering Functions from obspy
@@ -51,6 +53,56 @@ def cheby2_lowpass(df, freq, maxorder=8):
         order, wn = cheb2ord(wp, ws, rp, rs, analog=0)
     (z, p, k) = cheby2(order, rs, wn, btype='low', analog=0, output='zpk')
     return zpk2sos(z, p, k)
+
+
+def cheby2_bandpass(df, freq0, freq1, maxorder=8):
+    # From obspy
+    nyquist = df * 0.5
+    # rp - maximum ripple of passband, rs - attenuation of stopband
+    rp, rs, order = 1, 60, 1e99
+    ws = [freq0 / nyquist, freq1 / nyquist]  # stop band frequency
+    wp =  ws.copy()  # pass band frequency
+    # raise for some bad scenarios
+    if ws[1] > 1:
+        ws[1] = 1.0
+        msg = "Selected corner frequency is above Nyquist. " + \
+              "Setting Nyquist as high corner."
+        warnings.warn(msg)
+    while True:
+        if order <= maxorder:
+            break
+        wp[1] = wp[1] * 0.99
+        wp[0] = wp[0] * 1.01
+        order, wn = cheb2ord(wp, ws, rp, rs, analog=0)
+    (z, p, k) = cheby2(order, rs, wn, btype='bandpass', analog=0, output='zpk')
+    return zpk2sos(z, p, k)
+
+
+def cwt_bandpass(data, freqmin, freqmax, df, dj=1 / 12,
+                  mother_wavelet='morlet'):
+    """
+    Bandpass filter by continuous wavelet transform and frequency selection
+    Based on the pycwt module
+    :type data: numpy ndarray
+    :param data: input trace
+    :type freqmin: float
+    :param freqmin: lower frequency
+    :type freqmax: float
+    :param freqmax: upper frequency
+    :type df: float
+    :param df: Sampling rate in Hz
+    :param dj: Interval between scales (see :func: `pycwt.cwt`)
+    :param s0: Lowest scale (see :func: `pycwt.cwt`)
+    :param mother_wavelet: Mother wavelet
+    
+    """
+    dt = 1. / df
+    if mother_wavelet == "morlet":
+        mother_wavelet = pycwt.wavelet.Morlet(f0=6.0)
+    cwt, scales, freqs, cone_of_influence, _, _ = pycwt.cwt(data, dt, dj, wavelet=mother_wavelet, s0=dt)
+
+    ix_freq = np.where((freqs >= freqmin) & (freqs <= freqmax))[0]
+    return np.real(pycwt.icwt(cwt[ix_freq], scales[ix_freq], dt, dj, mother_wavelet))
 
 
 def bandpass(freqmin, freqmax, df, corners=4):

@@ -5,15 +5,17 @@ from glob import glob
 
 # Input
 # All files in one list will be plotted together
-files_list = glob('/home/ubuntu/data_mount/ruido/panama_quake/mx.029*.MSEED')
-files_list.extend(glob('/home/ubuntu/data_mount/ruido/panama_quake/G.UNM.MSEED'))
-
-freq_min = 0.05  # 0.1
-freq_max = 3.0  # 10.0
-corners = 10
+files_list = glob("/home/lermert/Desktop/CDMX/grillo/*155T07*")#'/home/ubuntu/data_mount/ruido/panama_quake/mx.029*.MSEED')
+files_list.extend(glob('/media/lermert/Ablage/temptest/data/raw/G.UNM.2020.155*.mseed'))
+files_list.extend(glob('/media/lermert/Ablage/temptest/AM*.mseed'))
+print(files_list)
+freq_min = 0.1  # 0.1
+freq_max = 5.0  # 10.0
+corners = 3
 zerophase = False
 # time: starttime and duration of spectrogram
-t0 = UTCDateTime("2020-01-28T19:12:00")
+#t0 = UTCDateTime("2020-01-28T19:12:00")
+t0 = UTCDateTime("2020-06-03T07:30:00")
 window_length_for_spectrogram = 1200  # seconds
 # each window length
 window_length_for_fft = 30  # seconds
@@ -21,7 +23,7 @@ mult = 2  # padding for spectrogram
 olap = 0.75
 # clips of plot colorscale (1 = clip at maximum, 0.5 = clip at 50% maximum)
 lower_clip = 0  # 0.25
-upper_clip = 1  # 0.75
+upper_clip = 0.75
 #  logarithmic frequency axis
 log_freq = True
 # figure size
@@ -31,7 +33,7 @@ def apply_filter(trace):
     for windowed_tr in trace.slide(window_length=3600.0, step=1800.0):
         windowed_tr.detrend('demean')
         windowed_tr.detrend('linear')
-    trace.taper(0.02)
+    trace.taper(0.2)
     trace.filter('bandpass', freqmin=freq_min, freqmax=freq_max,
                  corners=corners, zerophase=zerophase)
 
