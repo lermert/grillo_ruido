@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
 import os
-from noisepy.noise_module import stretching, dtw_dvv, stretching_vect
+from noisepy.noise_module import stretching, dtw_dvv, stretching_vect, wts_dvv
 from ruido.clustering import cluster
 from obspy.signal.filter import envelope
 from obspy.signal.detrend import polynomial as obspolynomial
@@ -35,53 +35,36 @@ class CCDataset(object):
         self.station_pair = os.path.splitext(self.station_pair)[0]
         self.datafile = h5py.File(inputfile, 'r')
 
-        # if not "data" in list(self.datafile['corr_windows'].keys()): 
-        #     # old file setup
-        #     self.filekeys = list(self.datafile['corr_windows'].keys())
-        #     self.tstamps = list([UTCDateTime('{},{},{},{},{}'.format(*k.split('.')[0: 5]))
-        #                          for k in self.filekeys])
-        #     self.ixs = None
-        # else:
-        #     if self.station_pair.split("--")[0][-1] == self.station_pair[-1] or exclude_tag==None:
-        #         self.ixs = np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0]
-        #     else:
-        #         try:
-        #             self.ixs = np.intersect1d(np.where(self.datafile["corr_windows"]
-        #                 ["timestamps"][:] != "")[0],
-        #                 np.where(self.datafile["corr_windows"]["tags"][:] != exclude_tag))
-        #         except:
-        #             self.ixs = np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0]
-
-        #     self.filekeys = self.datafile['corr_windows']["timestamps"][self.ixs]
-        #     self.tstamps = list([UTCDateTime('{},{},{},{},{}'.format(*k.split('.')[0: 5]))
-        #                          for k in self.filekeys])
+        self.initialize_dataset(inputfile)
         
+        self.stacks = {}
+
+        
+
+    def initialize_dataset(self, inputfile):
+        self.station_pair = os.path.splitext(os.path.basename(inputfile))[0]
+        self.station_pair = os.path.splitext(self.station_pair)[0]
+        self.station_pair = os.path.splitext(self.station_pair)[0]
+        self.datafile = h5py.File(inputfile, 'r')
         self.fs = dict(self.datafile['stats'].attrs)['sampling_rate']
         self.delta = 1. / self.fs
 
-        try:  # new file format
+        if "data" in list(self.datafile["corr_windows"].keys()):
             self.npts = self.datafile['corr_windows']["data"][0].shape[0]
             self.ntraces = len(np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0])
-        except KeyError:  #  old file format
+        else:  #  old file format
             self.npts = self.datafile['corr_windows'][next(iter(self.datafile["corr_windows"]))].shape[0]
-            self.ntraces = len(self.datafile["corr_windows"][:])
-            
+            self.ntraces = len(self.datafile["corr_windows"])
         self.max_lag = (self.npts - 1) / 2 / self.fs
         self.lag = np.linspace(-self.max_lag, self.max_lag, self.npts)
 
         self.data = None
         self.datakeys = []
         self.timestamps = []
-
-        if ref is None:
-            self.ref = np.zeros(self.npts)
-        else:
-            self.ref = ref
-        self.stacks = {}
-        self.smooth_stacks = {}
-
+        self.ref = np.zeros(self.npts)
         self.rms = None
         self.median = None
+
 
     def __str__(self):
         output = ""
@@ -102,12 +85,12 @@ class CCDataset(object):
         return(output)
 
 
-    def data_to_memory(self, n_corr_max=None, t_min=None, t_max=None, prestack=1):
+    def data_to_memory(self, n_corr_max=None, t_min=None, t_max=None):
 
         if n_corr_max is None:
             n_corr_max = self.ntraces
-        dat_shape = int(n_corr_max // prestack) + 1
 
+        dat_shape = int(n_corr_max)
         try:
             self.data = np.zeros((dat_shape, self.npts))
         except MemoryError:
@@ -117,31 +100,27 @@ or a higher prestack")
 
         self.datakeys = np.zeros(dat_shape, dtype=np.str)
         self.timestamps = np.zeros(dat_shape)
-        
         try:  # new file format
             for i, v in enumerate(self.datafile["corr_windows"]["data"][:]):
                 if i == n_corr_max:
                     break
-                ix = int(i // prestack)
-                self.data[ix, :] += v[:] / prestack
 
-                if self.datakeys[ix] == "":
-                    tstamp = self.datafile["corr_windows"]["timestamps"][i]
-                    self.datakeys[ix] = tstamp
+                self.data[i, :] = v[:]
+                tstamp = self.datafile["corr_windows"]["timestamps"][i]
+                self.datakeys[i] = tstamp
 
-                    tstamp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
-                    self.timestamps[ix] = UTCDateTime(tstamp).timestamp
+                tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+                self.timestamps[ix] = UTCDateTime(tstmp).timestamp
 
         except KeyError:  # old file format
             for i, (k, v) in enumerate(self.datafile["corr_windows"].items()):
                 if i == n_corr_max:
                     break
-                ix = int(i // prestack)
-                self.data[ix, :] += v[:] / prestack
-                self.datakeys[ix] = k
+                self.data[i, :] = v[:]
+                self.datakeys[i] = k
+                tstmp = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
+                self.timestamps[i] = UTCDateTime(tstmp).timestamp
 
-        #self.datakeys = np.array(self.datakeys)
-        #self.timestamps = np.array(self.timestamps)
 
         if t_min is not None:
             ix0 = np.argmin(abs(self.timestamps - t_min))
@@ -151,13 +130,102 @@ or a higher prestack")
             ix1 = np.argmin(abs(self.timestamps - t_max))
         else:
             ix1 = self.ntraces
-
+        self.ncorr = 
         self.data = self.data[ix0: ix1]
         self.timestamps = self.timestamps[ix0: ix1]
         self.datakeys = self.datakeys[ix0: ix1]
         self.ntraces = ix1 - ix0
         print("Read to memory from {} to {}".format(UTCDateTime(self.timestamps[0]),
                                                     UTCDateTime(self.timestamps[-1])))
+
+#     def data_to_memory_prestack(self, n_corr_max=None, t_min=None, t_max=None, prestackstep=86400.):
+
+#         if n_corr_max is None:
+#             n_corr_max = self.ntraces
+
+#         # estimate the required memory to avoid running into a memory error along the way
+#         # if tmin, tmax given: estimate from there
+#         # if not given: estimate from input file
+#         if t_min is not None:
+#             tm = t_min
+#         else:
+#             try:
+#                 tmf = UTCDateTime(self.datafile["corr_windows"]["timestamps"][0]).timestamp
+#             except KeyError:  # old file format
+#                 tmf = UTCDateTime(list(self.datafile["corr_windows"])[0]).timestamp
+#         # make sure only windows are used that actually are covered by the dataset
+#         tm = max(tmf, tm)
+
+#         if t_max is not None:
+#             tma = t_max
+#         else:
+#             enddate = ""
+#             try:
+#                 i = -1
+#                 while enddate == "":
+#                     enddate = self.datafile["corr_windows"]["timestamps"][i]
+#                     i -= 1
+                
+#             except KeyError:  # old file format
+#                 i = -1
+#                 while enddate == "":
+#                     enddate = list(self.datafile["corr_windows"])[i]
+#                     i -= 1
+
+#             tma = UTCDateTime(enddate).timestamp
+
+#         est_shape = (tma - tm) / prestackstep
+
+#         try:
+#             self.data = np.zeros((dat_shape, self.npts))
+#         except MemoryError:
+#             print("Data doesn't fit in memory, try setting a lower n_corr_max\
+# or a higher prestack")
+#             return()
+
+#         # now, read in the data
+#         self.data = []
+#         self.datakeys = []  # np.zeros(dat_shape, dtype=np.str)
+#         self.timestamps = []  # np.zeros(dat_shape)
+#         current_stack = []
+#         t_running = tm
+#         while t_running <= tma:
+#             try:  # new file format
+#                 for i, v in enumerate(self.datafile["corr_windows"]["data"][:]):
+#                     if i == n_corr_max:
+#                         break
+
+#                     # if current time - t_running: stack collected windows, append
+#                     # the data and the timestamps
+
+#                     if self.datakeys[ix] == "":
+#                         tstamp = self.datafile["corr_windows"]["timestamps"][i]
+#                         self.datakeys[ix] = tstamp
+
+#                         tstamp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+#                         self.timestamps[ix] = UTCDateTime(tstamp).timestamp
+
+#             except KeyError:  # old file format
+#                 for i, (k, v) in enumerate(self.datafile["corr_windows"].items()):
+#                     if i == n_corr_max:
+#                         break
+#                     if ix == dat_shape:
+#                         break
+#                     ix = int(i // prestack)
+#                     self.data[ix, :] += v[:] / prestack
+#                     self.datakeys[ix] = k
+#                     tstamp = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
+#                     self.timestamps[ix] = UTCDateTime(tstamp).timestamp
+
+#         #self.datakeys = np.array(self.datakeys)
+#         #self.timestamps = np.array(self.timestamps)
+#         self.ncorr = 
+#         self.data = self.data[ix0: ix1]
+#         self.timestamps = self.timestamps[ix0: ix1]
+#         self.datakeys = self.datakeys[ix0: ix1]
+#         self.ntraces = ix1 - ix0
+#         print("Read to memory from {} to {}".format(UTCDateTime(self.timestamps[0]),
+#                                                     UTCDateTime(self.timestamps[-1])))
 
 
     def add_rms(self):
@@ -172,11 +240,11 @@ or a higher prestack")
            
         self.rms = rms
 
-    def select_by_percentile(self, ixs, perc, measurement="RMS", mode="upper"):
+    def select_by_percentile(self, ixs, perc, measurement="RMS",
+                             mode="upper", debug_mode=False):
 
         if self.rms is None:
             self.add_rms()
-
         rms = self.rms[ixs]
 
         if mode == "upper":
@@ -186,6 +254,8 @@ or a higher prestack")
         elif mode == "both":
             ixs_keep = np.intersect1d(np.where(rms <= np.percentile(rms, perc)),
                                       np.where(rms >= np.percentile(rms, 100 - perc)))
+        if debug_mode:
+            print("Selection by percentile of RMS: Before, After", len(ixs), len(ixs_keep))
 
         return(ixs[ixs_keep])
 
@@ -225,7 +295,7 @@ or a higher prestack")
         elif selection_mode == "cc_to_median":
             if self.median is None:
                 self.median = np.nanmedian(self.data, axis=0)
-                print(self.median.shape)
+                # print(self.median.shape)
             ixs_selected = []
             if twin is not None:
                 cc_ixs = [np.argmin((self.lag - t) ** 2) for t in twin]
@@ -263,28 +333,44 @@ or a higher prestack")
     def stack(self, ixs, mode="linear"):
 
         if mode == "linear":
-            s = np.zeros(self.npts)
             s = self.data[ixs].sum(axis=0)
             s = Trace(s / len(ixs))
             s.stats.sampling_rate = self.fs
             self.stacks[self.timestamps[ixs[0]]] = s
 
 
-    def data_to_dataframe(self, lag0, lag1, n_corr_max=None, normalize=False):
+    def data_to_dataframe(self, lag0, lag1, normalize=False):
 
         ixs_get0 = np.where(self.lag >= lag0)
         ixs_lets = np.where(self.lag <= lag1)
         ixs = np.intersect1d(ixs_get0, ixs_lets)
         self.df_lags = self.lag[ixs]
         nr_samples = len(ixs)
-        if n_corr_max is None:
-            n_corr_max = self.ntraces
+
         self.df = pd.DataFrame(columns=range(nr_samples),
-                               data=np.zeros((n_corr_max, nr_samples)))
-        for i in range(n_corr_max):
+                               data=np.zeros((self.ncorr, nr_samples)))
+        for i in range(self.ncorr):
             for j in range(nr_samples):
                 if normalize:
-                    self.df.iat[i, j] = self.data[i, ixs][j] / (self.data[i, ixs].max() + np.finfo(float).eps)
+                    self.df.iat[i, j] = self.data[i, ixs][j] / (self.data[i, :].max() + np.finfo(float).eps)
+                else:
+                    self.df.iat[i, j] = self.data[i, ixs][j]
+
+    def stacks_to_dataframe(self, lag0, lag1, normalize=True):
+
+        tstamps = np.array(list(self.stacks.keys()))
+        ixs_get0 = np.where(self.lag >= lag0)
+        ixs_lets = np.where(self.lag <= lag1)
+        ixs = np.intersect1d(ixs_get0, ixs_lets)
+        self.df_lags = self.lag[ixs]
+        nr_samples = len(ixs)
+
+        self.df = pd.DataFrame(columns=range(nr_samples),
+                               data=np.zeros((len(self.stacks), nr_samples)))
+        for i in range(len(self.stacks)):
+            for j in range(nr_samples):
+                if normalize:
+                    self.df.iat[i, j] = self.data[i, ixs][j] / (self.data[i, :].max() + np.finfo(float).eps)
                 else:
                     self.df.iat[i, j] = self.data[i, ixs][j]
 
@@ -294,194 +380,6 @@ or a higher prestack")
             return self.data[self.datakeys.index(k), :]
         else:
             return self.data[ix, :]
-
-
-    # def forstack_moving_average(self, t0, tstep, duration):
-
-    #     stack_tstamps = np.array(list(self.stacks.keys()))
-
-    #     t_running = t0
-    #     stacks = []
-
-    #     while t_running < stack_tstamps.max():
-    #         ixs_selected = np.intersect1d(np.where(stack_tstamps >= t_running),
-    #                                       np.where(stack_tstamps < (t_running + duration)))
-    #         if len(ixs_selected) == 0:
-    #             t_running += tstep
-    #             continue
-
-    #         dat = np.zeros(self.npts) #annoyting intermediate step until I change all to numpy arrays
-    #         for i in ixs_selected:
-    #             dat += self.stacks[stack_tstamps[i]]
-    #         dat /= len(ixs_selected)
-    #         s = Trace(dat)
-    #         s.stats.sampling_rate = self.fs
-    #         tstamp = UTCDateTime(t_running + 0.5 * duration).timestamp
-    #         self.smooth_stacks[tstamp] = s
-
-    #         t_running += tstep
-
-
-    # def data_from_file(self, ix):
-    #     return(self.datafile["corr_windows"][self.filekeys[ix]][:])
-
-    # def stack_by_cluster(self, stack_length="daily", from_mem=True, cluster=0):
-
-    #     self.stack_length = stack_length
-
-    #     if from_mem:
-    #         get_data = self.data_from_mem
-    #     else:
-    #         get_data = self.data_from_file
-
-    #     previous = ""
-    #     previous_hour = 00
-    #     stacks = []
-    #     stack_start_times = []
-
-    #     ix_cluster = np.where(self.labels == cluster)[0]
-    #     for ix in ix_cluster:#, k in enumerate(self.filekeys[ix_cluster]):
-    #         k = self.filekeys[ix]
-    #         if from_mem and ix == self.data.shape[0]:
-    #             if "stack" in locals():
-    #                 stack = Trace(np.array(stack) / stack_count)
-    #                 stack.stats.sampling_rate = self.fs
-    #                 stack.stats.sac = {}
-    #                 stack.stats.sac["b"] = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-    #                 stacks.append(stack)
-    #             break
-    #         if stack_length == 'daily':
-    #             timestr = '{}.{}'.format(*k.split('.')[0: 2])
-    #             if timestr != previous:
-    #                 if previous != "":
-    #                     stack = Trace(np.array(stack) / stack_count)
-    #                     stack.stats.sampling_rate = self.fs
-    #                     stack.stats.sac = {}
-    #                     stack.stats.sac["b"] = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-    #                     stacks.append(stack)
-
-    #                 previous = timestr
-    #                 stack = get_data(ix)
-    #                 stack_count = 1
-    #             else:
-    #                 stack += get_data(ix)
-    #                 stack_count += 1
-
-    #     self.stacks = stacks
-    #     print("Compiled {} stacks".format(len(self.stacks)))
-
-    # def linear_stack(self, stack_length="daily", from_mem=True,
-    #                  cc_reference_min=None, cc_reference_s=None,
-    #                  n_corr_max=None):
-
-    #     if n_corr_max is None:
-    #         n_corr_max = self.ntraces
-    #     self.stack_length = stack_length
-
-    #     if from_mem:
-    #         get_data = self.data_from_mem
-    #         keys = self.datakeys
-    #     else:
-    #         get_data = self.data_from_file
-    #         keys = self.filekeys
-
-    #     previous = ""
-    #     stack_time_count = 0.0
-    #     stacks = []
-    #     #stack_start_times = []
-        
-    #     for ix, k in enumerate(keys[0: n_corr_max]):
-    #         if cc_reference_min is not None:
-    #             subtrace = get_data(ix=ix)
-    #             if cc_reference_s is None:
-    #                 cc_ixs = [0, -1]
-    #             else:
-    #                 cc_ixs = [np.argmin((self.lag - t) ** 2) for t in cc_reference_s]
-    #             cc = np.corrcoef(subtrace[cc_ixs[0]: cc_ixs[1]], self.ref[cc_ixs[0]: cc_ixs[1]])
-    #             if cc[0][1] < cc_reference_min or np.isnan(cc[0][1]):
-    #                 continue
-
-    #         if from_mem and ix == self.data.shape[0]:
-    #             if "stack" in locals():
-    #                 stack = Trace(np.array(stack) / stack_count)
-    #                 stack.stats.sampling_rate = self.fs
-    #                 stack.stats.sac = {}
-    #                 stack.stats.sac["b"] = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-    #                 stack.stats.sac["user0"] = stack_count
-    #                 stacks.append(stack) 
-    #             break
-
-    #         if stack_length[-5: ] == 'daily':
-    #             try:
-    #                 daystep = hour_strings[stack_length[: -5]]
-    #             except KeyError:
-    #                 raise ValueError("x-hourly stack duration can be: ",
-    #                                 (len(hour_strings) * "{}, ").format(*[k in hour_strings.keys()]))
-    #             timestr = "{}.{}".format(*k.split('.')[0: 2])
-
-    #             if timestr != previous and stack_time_count == daystep:
-    #                 if "stack" in locals():
-    #                     stack = Trace(np.array(stack) / stack_count)
-    #                     stack.stats.sampling_rate = self.fs
-    #                     stack.stats.sac = {}
-    #                     stack.stats.sac["b"] = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-    #                     stack.stats.sac["user0"] = stack_count
-    #                     stacks.append(stack)
-
-    #                 previous = timestr
-    #                 stack = get_data(ix)
-    #                 stack_count = 1
-    #                 stack_time_count = 1
-    #             elif timestr != previous and stack_time_count < daystep:
-    #                 if "stack" in locals():
-    #                     stack += get_data(ix)
-    #                     stack_count += 1
-    #                 else:
-    #                     stack = get_data(ix)
-    #                     stack_count = 1
-    #                 stack_time_count += 1
-    #                 previous = timestr
-    #             else:
-    #                 if "stack" in locals():
-    #                     stack += get_data(ix)
-    #                     stack_count += 1
-    #                 else:
-    #                     stack = get_data(ix)
-    #                     stack_count = 1
-
-    #         elif stack_length[-6: ] == "hourly":
-    #             try:
-    #                 hourstep = hour_strings[stack_length[: -6]]
-    #             except KeyError:
-    #                 raise ValueError("x-hourly stack duration can be: ",
-    #                                 (len(hour_strings) * "{}, ").format(*[k in hour_strings.keys()]))
-    #             daystr = "{}.{}".format(*k.split(".")[0: 2])
-    #             hourstr = k.split(".")[2]
-                
-    #             if float(hourstr) - float(previous) > hourstep or daystr != previous:
-    #                 if "stack" in locals():
-    #                     stack = Trace(np.array(stack) / stack_count)
-    #                     stack.stats.sampling_rate = self.fs
-    #                     stack.stats.sac = {}
-    #                     stack.stats.sac["b"] = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-    #                     stack.stats.sac["user0"] = stack_count
-    #                     stacks.append(stack)
-
-    #                 stack = get_data(ix)
-    #                 stack_count = 1
-    #                 previous = hourstr
-    #                 previous = daystr
-    #             else:
-    #                 if "stack" in locals():
-    #                     stack += get_data(ix)
-    #                     stack_count += 1
-    #                 else:
-    #                     stack = get_data(ix)
-    #                     stack_count = 1
-
-    #     self.stacks = stacks
-    #     print("Compiled {} stacks".format(len(self.stacks)))
-
 
     def reference(self, reftype, t_min=None, t_max=None, overwrite=False):
 
@@ -648,7 +546,7 @@ or a higher prestack")
                 self.windowed_stacks[k] = Trace((stack.data * win).copy())
                 self.windowed_stacks[k].stats.sampling_rate = stack.stats.sampling_rate
 
-    def windowed_reference(self, t_mid, hw, window_type="hann", tukey_alpha=0.2):
+    def window_reference(self, t_mid, hw, window_type="hann", tukey_alpha=0.2):
 
         win = self.get_window(t_mid, hw, window_type=window_type, alpha=tukey_alpha)
         return(self.ref * win)
@@ -661,15 +559,7 @@ or a higher prestack")
 
 
     def measure_dvv(self, f0, f1, method="stretching", ngrid=90, dvv_bound=0.03,
-                    do_filter_reference=False, measure_smoothed=False):
-
-
-        self.dvv = np.zeros(len(self.stacks))
-        self.dvv_times = np.zeros(len(self.stacks))
-        self.ccoeff = np.zeros(len(self.stacks))
-        self.best_ccoeff = np.zeros(len(self.stacks))
-        self.dvv_error = np.zeros(len(self.stacks))
-
+                    do_filter_reference=False, measure_smoothed=False, indices=None):
 
         if len(self.stacks) == 0:
             return()
@@ -680,6 +570,7 @@ or a higher prestack")
         para["twin"] = [self.lag[0], self.lag[-1] + 1. / self.fs]  # [self.lag[0], self.lag[-1] + 1. / self.fs]
         para["freq"] = [f0, f1]
 
+
         if do_filter_reference:
             sos = filter.cheby2_bandpass(df=self.fs, freq0=f0, freq1=f1,
                                          maxorder=12)
@@ -687,7 +578,31 @@ or a higher prestack")
             firstpass = sosfilt(sos, taper * reference)
             reference = sosfilt(sos, firstpass[::-1])[::-1]
 
-        for i, (k, tr) in enumerate(self.stacks.items()):
+        if indices is None:
+            indices = range(len(self.stacks))
+
+        self.dvv_times = np.zeros(len(indices))
+        self.ccoeff = np.zeros(len(indices))
+        self.best_ccoeff = np.zeros(len(indices))
+       
+
+        if method in ["stretching"]:
+            self.dvv = np.zeros(len(indices))
+            self.dvv_error = np.zeros(len(indices))
+        elif method in ["cwt-stretching"]:
+            testmsr = wts_dvv(reference, reference, True, 
+                              para, dvv_bound, ngrid)
+            self.dvv = np.zeros((len(indices), len(testmsr[1])))
+            self.dvv_error = np.zeros((len(indices), len(testmsr[1])))
+
+        else:
+            raise ValueError("Unknown measurement method {}.".format(method))
+
+
+        cnt = 0
+        for i, (k, tr) in enumerate(list(self.stacks.items())):
+            if i not in indices:
+                continue
             if method == "stretching":
                 dvv, delta_dvv, coeff, cdp = stretching_vect(reference, tr.data,
                                                         dvv_bound, ngrid, para)
@@ -698,13 +613,20 @@ or a higher prestack")
                 coeff = err
                 cdp = np.nan
                 delta_dvv = np.nan
+            elif method == "cwt-stretching":
+                cwtfreqs, dvv, err = wts_dvv(reference, tr.data, True, 
+                                             para, dvv_bound, ngrid)
+                delta_dvv = err
+                coeff = np.nan
+                cdp = np.nan
+                self.cwt_freqs = cwtfreqs
 
-            self.dvv[i] = dvv
-            self.dvv_times[i] = k
-            self.ccoeff[i] = cdp
-            self.best_ccoeff[i] = coeff
-            self.dvv_error[i] = delta_dvv
-
+            self.dvv[cnt, :] = dvv
+            self.dvv_times[cnt] = k
+            self.ccoeff[cnt] = cdp
+            self.best_ccoeff[cnt] = coeff
+            self.dvv_error[cnt] = delta_dvv
+            cnt += 1
     # def interpolate_reference(self, new_fs):
     #     new_npts = int(len(self.ref) / self.fs * new_fs)
     #     new_npts = int(len(self.ref) / self.fs * new_fs)
@@ -724,9 +646,11 @@ or a higher prestack")
 
     def interpolate_stacks(self, new_fs):
 
-        new_npts = int(self.npts / self.fs * new_fs)
-        if new_npts % 2 == 0:
-            new_npts += 1
+        if (new_fs % self.fs) != 0:
+            raise ValueError("For the moment only integer-factor resampling is permitted.")
+
+        new_npts = int((self.npts - 1.) / self.fs * new_fs) + 1
+        print("new_npts: ", new_npts)
 
         new_lag = np.linspace(-self.max_lag, self.max_lag, new_npts)
         for (k, stack) in self.stacks.items():
@@ -736,73 +660,42 @@ or a higher prestack")
         self.ref = f(new_lag)
         self.lag = new_lag
         self.npts = new_npts
-        self.fs = self.npts / (self.lag[-1] - self.lag[0])
+        self.fs = (self.npts - 1) / (self.lag[-1] - self.lag[0])
         self.delta = 1. / self.fs
+        print(self.delta, self.fs, self.lag.max())
         self.data = None
 
-    def form_clusters(self, n_clusters, lag0=0, lag1=20, n_corr_max=None, normalize=False, method="kmeans",
+    def form_clusters(self, n_clusters, mode="stacks",
+                      lag0=0, lag1=20, n_corr_max=None,
+                      normalize=False, method="kmeans",
                       n_iterations=100):
-        self.data_to_dataframe(lag0=lag0, lag1=lag1, n_corr_max=n_corr_max, normalize=normalize)
+
+        if mode == "stacks":
+            # stacks are used for clustering
+            self.stacks_to_dataframe(lag0=lag0, lag1=lag1, normalize=normalize)
+        else:
+            self.data_to_dataframe(lag0=lag0, lag1=lag1, normalize=normalize)
 
         if method == "kmeans":
             self.kmeans_labels, self.centroids, self.inertia, self.n_it_cluster = cluster(self.df, n_clusters)
         elif method == "minibatch":
             self.kmeans_labels, self.centroids, self.inertia, self.n_it_cluster = cluster(self.df, n_clusters, n_iterations)
 
-    # def plot_clustered_data(self, by_cluster=True, by_date=False, plotting_scale=0.1):
-    #     if "labels" not in self.__dict__.keys():
-    #         raise ValueError("Must cluster the data using cluster_data before plotting")
-    #     import seaborn as snsnpts
-
-    #     n_clusters = len(self.centroids)
-    #     nr_samples = len(self.df.columns)
-    #     current_palette = sns.color_palette("bright", n_clusters + 1)
-    #     colors = list(map(lambda x: current_palettform_cle[x+1], self.labels))
-    #     if by_date:
-    #         fig = plt.figure(figsize=(5, 15))
-    #         for i in range(len(self.df)):
-    #             tsplot = np.zeros(nr_samples)
-    #             for j in range(nr_samples):
-    #                 tsplot[j] = self.df.iat[i, j]
-    #             plt.plot(self.df_lags, tsplot / tsplot.max() + i, color=colors[i], alpha=0.5)
-            
-    #     if by_cluster:
-    #         fig = plt.figure(figsize=(5, 15))
-    #         offset = 0
-    #         for l in set(self.labels):
-    #             color = current_palette[l]
-    #             ixn = np.where(self.labels == l)
-    #             tsplot = np.zeros(nr_samples)
-    #             for i in ixn[0]:
-    #                 for j in range(nr_samples):
-    #                     tsplot[j] = self.df.iat[i, j]
-    #                 plt.plot(self.df_lags, tsplot / tsplot.max() + offset * plotting_scale, color=color, alpha=0.5)
-    #                 offset += 1
-    #             offset += 2
-    #     plt.xlabel("Lag (s)")
-    #     plt.yticks([])
-    #     plt.title("K-means clustering of traces from:\n{}\n{} clusters".format(self.station_pair,
-    #                                                                            len(self.centroids)))
-    #     plt.savefig("clusters.png")
-    #     plt.show()
-
-
     def plot_stacks(self, outfile=None, seconds_to_show=20, scale_factor_plotting=0.1,
-        plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, plot_smoothed=False,
-        color_by_cc=False, normalize_all=False, first_of_month_label=True, ax=None, plot_envelope=False):
+        plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, mask_gaps=False, step=None, figsize=None,
+        color_by_cc=False, normalize_all=False, first_of_month_label=False, ax=None, plot_envelope=False, yearlabel=True):
 
-        if plot_smoothed:
-            to_plot = self.smooth_stacks
-        else:
-            to_plot = self.stacks
+        if mask_gaps and step == None:
+            raise ValueError("To mask the gaps, you must provide the step between successive windows.")
 
+        to_plot = self.stacks
         if len(to_plot) == 0:
             return()
         ylabels = []
         ylabelticks = []
 
         if ax is None:
-            fig = plt.figure()
+            fig = plt.figure(figsize=figsize)
             ax1 = fig.add_subplot(111)
         else:
             ax1 = ax
@@ -843,43 +736,97 @@ or a higher prestack")
                              scale_factor_plotting * cnt + np.mean(abs(t.data))])
 
         elif plot_mode == "heatmap":
-            dat_mat = np.zeros((len(to_plot), self.npts))
-            t_to_plot = np.zeros(len(to_plot))
-            for ix, (k, t) in enumerate(to_plot.items()):
-                if normalize_all:
-                    dat_mat[ix, :] = t.data / t.data.max()
-                else:
-                    dat_mat[ix, :] = t.data
+
+            if not mask_gaps:
+                dat_mat = np.zeros((len(to_plot), self.npts))
+                t_to_plot = np.zeros(len(to_plot))
+                for ix, (k, t) in enumerate(to_plot.items()):
+                    if normalize_all:
+                        dat_mat[ix, :] = t.data / t.data.max()
+                    else:
+                        dat_mat[ix, :] = t.data
+                    if plot_envelope:
+                        dat_mat[ix, :] = envelope(dat_mat[ix, :])
+                    t_to_plot[ix] = k
+                    if first_of_month_label:
+                        if UTCDateTime(k).strftime("%d") == "01"\
+                            and UTCDateTime(k).strftime("%d.%m.%y") not in ylabelticks:
+                            ylabels.append(ix)
+                            ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
+                    else:
+                        if ix == 0:
+                            ylabels.append(ix)
+                            ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
+                        elif ix - ylabels[-1] == len(to_plot) // 6:
+                            ylabels.append(ix)
+                            ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
                 if plot_envelope:
-                    dat_mat[ix, :] = envelope(dat_mat[ix, :])
-                t_to_plot[ix] = k
-                if first_of_month_label:
-                    if UTCDateTime(k).strftime("%d") == "01"\
-                        and UTCDateTime(k).strftime("%d.%m.%y") not in ylabelticks:
-                        ylabels.append(ix)
-                        ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
+                    vmin = 0
+                    vmax = scale_factor_plotting*dat_mat.max()
                 else:
-                    if ix == 0:
-                        ylabels.append(ix)
-                        ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
-                    elif ix - ylabels[-1] == len(to_plot) // 6:
-                        ylabels.append(ix)
-                        ylabelticks.append(UTCDateTime(k).strftime("%d.%m.%y"))
-            if plot_envelope:
-                vmin = 0
-                vmax = scale_factor_plotting*dat_mat.max()
+                    vmin = -scale_factor_plotting * dat_mat.max()
+                    vmax = scale_factor_plotting * dat_mat.max() 
+                ax1.pcolormesh(self.lag, range(len(to_plot)), dat_mat,
+                               vmax=vmax,
+                               vmin=vmin,
+                               cmap=cmap)
             else:
-                vmin = -scale_factor_plotting*dat_mat.max()
-                vmax = scale_factor_plotting*dat_mat.max() 
-            ax1.pcolormesh(self.lag, range(len(to_plot)), dat_mat,
-                           vmax=vmax,
-                           vmin=vmin,
-                           cmap=cmap)
+                tstamp0 = list(to_plot.keys())[0]
+                tstamp1 = list(to_plot.keys())[-1]
+                #print(UTCDateTime(tstamp0), UTCDateTime(tstamp1))
+                t_to_plot = np.arange(tstamp0, tstamp1 + step, step=step)
+                dat_mat = np.zeros((len(t_to_plot), self.npts))
+                dat_mat[:, :] = np.nan
+                years = []
+                for ix, (k, t) in enumerate(to_plot.items()):
+
+                    ix_t = np.argmin(np.abs(t_to_plot - k))
+                    if normalize_all:
+                        dat_mat[ix_t, :] = t.data / t.data.max()
+                    else:
+                        dat_mat[ix_t, :] = t.data
+                    if plot_envelope:
+                        dat_mat[ix_t, :] = envelope(dat_mat[ix, :])
+                    
+                    if first_of_month_label:
+                        if UTCDateTime(k).strftime("%d") == "01"\
+                            and UTCDateTime(k).strftime("%d.%m.%y") not in ylabelticks:
+                            ylabels.append(t_to_plot[ix_t])
+                            ylabelticks.append(UTCDateTime(k).strftime("%Y/%m"))
+
+                    elif yearlabel:
+                       
+                        if UTCDateTime(k).strftime("%Y") not in years:
+                            years.append(UTCDateTime(k).strftime("%Y"))
+                            ylabels.append(t_to_plot[ix_t])
+                            ylabelticks.append(UTCDateTime(k).strftime("%Y/%m"))
+                    else:
+                        if ix_t == 0:
+                            ylabels.append(t_to_plot[ix_t])
+                            ylabelticks.append(UTCDateTime(k).strftime("%Y/%m"))
+                        elif ix_t % (int(len(t_to_plot) // 6)) == 0:
+                            ylabels.append(t_to_plot[ix_t])
+                            ylabelticks.append(UTCDateTime(k).strftime("%Y/%m"))
+                if plot_envelope:
+                    vmin = 0
+                    vmax = scale_factor_plotting * np.nanmax(dat_mat)
+                else:
+                    vmin = -scale_factor_plotting * np.nanmax(dat_mat)
+                    vmax = scale_factor_plotting * np.nanmax(dat_mat)
+                ax1.pcolormesh(self.lag, t_to_plot, dat_mat,
+                               vmax=vmax,
+                               vmin=vmin,
+                               cmap=cmap)
+
+        #ylabels.append(UTCDateTime("2017,262").timestamp)
+        #ylabelticks.append("Puebla")
+
         ax1.set_title(self.station_pair)
         ax1.set_ylabel("Normalized stacks (-)")
         ax1.set_xlim([seconds_to_start, seconds_to_show])
         ax1.set_xlabel("Lag (seconds)")
-        ax1.set_yticks(ylabels, ylabelticks)
+        ax1.set_yticks(ylabels)
+        ax1.set_yticklabels(ylabelticks)
         ax1.yaxis.tick_right()
 
         ax1.grid(linestyle=":", color="lawngreen", axis="x")

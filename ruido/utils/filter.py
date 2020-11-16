@@ -51,6 +51,7 @@ def cheby2_lowpass(df, freq, maxorder=8):
             break
         wp = wp * 0.99
         order, wn = cheb2ord(wp, ws, rp, rs, analog=0)
+    print("Pass band, stop band: ", wp * nyquist, ws * nyquist)
     (z, p, k) = cheby2(order, rs, wn, btype='low', analog=0, output='zpk')
     return zpk2sos(z, p, k)
 
@@ -74,6 +75,8 @@ def cheby2_bandpass(df, freq0, freq1, maxorder=8):
         wp[1] = wp[1] * 0.99
         wp[0] = wp[0] * 1.01
         order, wn = cheb2ord(wp, ws, rp, rs, analog=0)
+    print("Pass band, stop band: ", wp[0] * nyquist, wp[1] * nyquist, 
+          ws[0] * nyquist, ws[1] * nyquist)
     (z, p, k) = cheby2(order, rs, wn, btype='bandpass', analog=0, output='zpk')
     return zpk2sos(z, p, k)
 

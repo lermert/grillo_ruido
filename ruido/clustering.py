@@ -15,7 +15,7 @@ def cluster_minibatch(df, n_clusters, n_iterations):
                           n_clusters=n_clusters,
                           max_iter=n_iterations,
                           batch_size=int(len(df) / 10),
-                          n_init=None,
+                          n_init=10,
                           max_no_improvement=20,
                           verbose=True,
                           random_state=0)
