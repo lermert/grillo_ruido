@@ -196,28 +196,29 @@ class CCDataset(object):
             n_corr_max = ntraces
 
         # allocate data
-        # try:
-        #     data = np.zeros((n_corr_max, npts))
-        # except MemoryError:
-        #     print("Data doesn't fit in memory, set a lower n_corr_max")
-        #     return()
-        data = []
+        try:
+            data = np.zeros((n_corr_max, npts))
+        except MemoryError:
+            print("Data doesn't fit in memory, set a lower n_corr_max")
+            return()
+        
         # allocate timestamps array
-        #timestamps = np.zeros(n_corr_max)
-        timestamps = []
+        timestamps = np.zeros(n_corr_max)
         try:  # new file format
             for i, v in enumerate(self.datafile["corr_windows"]["data"][:]):
                 if i == n_corr_max:
                     break
 
-                #data[i, :] = v[:]
-                data.append(v)
+                data[i, :] = v[:]
+                #data.append(v)
                 tstamp = self.datafile["corr_windows"]["timestamps"][i]
                 #self.datakeys[i] = tstamp
 
                 tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
-                #timestamps[i] = UTCDateTime(tstmp).timestamp
-                timestamps.append(UTCDateTime(tstmp).timestamp)
+                timestamps[i] = UTCDateTime(tstmp).timestamp
+                if t_max is not None and tstmp > t_max:
+                    break
+                #timestamps.append(UTCDateTime(tstmp).timestamp)
         except KeyError:  # old file format
             for i, (k, v) in enumerate(self.datafile["corr_windows"].items()):
                 if i == n_corr_max:
@@ -236,7 +237,7 @@ class CCDataset(object):
         else:
             ix1 = ntraces
 
-        data = np.array(data)[ix0: ix1, :]
+        data = data[ix0: ix1, :]
         timestamps = timestamps[ix0: ix1]
         if normalize:
             # absolute last-resort-I-cannot-reprocess way to deal with amplitude issues
