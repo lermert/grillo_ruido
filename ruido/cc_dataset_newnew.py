@@ -3,7 +3,8 @@ import h5py
 from obspy import Trace, UTCDateTime
 from obspy.signal.invsim import cosine_taper
 import matplotlib.pyplot as plt
-from scipy.signal import sosfilt, sosfiltfilt, hann, tukey, next_fast_len
+from scipy.signal import sosfilt, sosfiltfilt, hann, tukey, 
+from scipy.fft import next_fast_len
 from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
@@ -719,7 +720,7 @@ class CCDataset(object):
                                 d=1./self.dataset[stacklevel].fs)
         ix_f1 = np.argmin((freq - f1) ** 2)
         ix_f2 = np.argmin((freq - f2) ** 2)
-
+        print(freq[ix_f1], freq[ix_f2])
         
         for i, tr in enumerate(self.dataset[stacklevel].data):
             spec = np.zeros(freq.shape)
@@ -730,7 +731,7 @@ class CCDataset(object):
             # self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
             #                                       n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
             spec[ix_f1: ix_f2] = whiten(td_taper * tr, fft_para)
-            self.dataset[stacklevel].data[i, :] = np.fft.rfft(spec)
+            self.dataset[stacklevel].data[i, :] = np.fft.rfft(spec, n=nfft)[0: self.dataset[stacklevel].npts]
 
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=np.complex)
