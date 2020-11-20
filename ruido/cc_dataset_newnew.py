@@ -3,7 +3,7 @@ import h5py
 from obspy import Trace, UTCDateTime
 from obspy.signal.invsim import cosine_taper
 import matplotlib.pyplot as plt
-from scipy.signal import sosfilt, sosfiltfilt, hann, tukey
+from scipy.signal import sosfilt, sosfiltfilt, hann, tukey, next_fast_len
 from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
@@ -708,13 +708,14 @@ class CCDataset(object):
 
     def post_whiten(self, f1, f2, npts_smooth=5, stacklevel=0):
 
+        nfft = int(next_fast_len(self.dataset[stacklevel].npts))
         td_taper = cosine_taper(self.dataset[stacklevel].npts, 0.1)
         fft_para = {"dt": 1./self.dataset[stacklevel].fs, 
                      "freqmin": f1,
                      "freqmax": f2,
                      "smooth_N": 5,
                      "freq_norm": "phase_only"}
-        freq = np.fft.fftfreq(n=2*self.dataset[stacklevel].npts,
+        freq = np.fft.fftfreq(n=nfft,
                                 d=1./self.dataset[stacklevel].fs)
         ix_f1 = np.argmin((freq - f1) ** 2)
         ix_f2 = np.argmin((freq - f2) ** 2)
