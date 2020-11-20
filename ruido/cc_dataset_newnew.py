@@ -712,24 +712,24 @@ class CCDataset(object):
         fft_para = {"dt": 1./self.dataset[stacklevel].fs, 
                      "freqmin": f1,
                      "freqmax": f2,
-                     "smooth_n": 5,
+                     "smooth_N": 5,
                      "freq_norm": "phase_only"}
-        # freq = np.fft.rfftfreq(n=2*self.dataset[stacklevel].npts,
-        #                        d=1./self.dataset[stacklevel].fs)
-        # ix_f1 = np.argmin((freq - f1) ** 2)
-        # ix_f2 = np.argmin((freq - f2) ** 2)
+        freq = np.fft.fftfreq(n=2*self.dataset[stacklevel].npts,
+                                d=1./self.dataset[stacklevel].fs)
+        ix_f1 = np.argmin((freq - f1) ** 2)
+        ix_f2 = np.argmin((freq - f2) ** 2)
 
-        # taper = np.ones(freq.shape, dtype=np.complex)
-        # taper[ix_f1: ix_f2] += tukey(ix_f2 - ix_f1)
-
+        
         for i, tr in enumerate(self.dataset[stacklevel].data):
+            spec = np.zeros(freq.shape)
             # spec = np.fft.rfft(td_taper * tr, n=2*self.dataset[stacklevel].npts)
             # nume = spec.copy() * taper
             # nume = self.moving_average(nume, n=npts_smooth)
             # spec /= nume
             # self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
             #                                       n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
-            self.dataset[stacklevel].data[i, :] = whiten(td_taper * tr, fft_para)
+            spec[ix_f1: ix_f2] = whiten(td_taper * tr, fft_para)
+            self.dataset[stacklevel].data[i, :] = np.fft.rfft(spec)
 
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=np.complex)
