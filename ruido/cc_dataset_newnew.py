@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
 import os
-from noisepy.noise_module import stretching, dtw_dvv, stretching_vect, wts_dvv
+from noisepy.noise_module import stretching, dtw_dvv, stretching_vect, wts_dvv, whiten
 from ruido.clustering import cluster, cluster_minibatch
 from obspy.signal.filter import envelope
 from obspy.signal.detrend import polynomial as obspolynomial
@@ -709,21 +709,27 @@ class CCDataset(object):
     def post_whiten(self, f1, f2, npts_smooth=5, stacklevel=0):
 
         td_taper = cosine_taper(self.dataset[stacklevel].npts, 0.1)
-        freq = np.fft.rfftfreq(n=2*self.dataset[stacklevel].npts,
-                               d=1./self.dataset[stacklevel].fs)
-        ix_f1 = np.argmin((freq - f1) ** 2)
-        ix_f2 = np.argmin((freq - f2) ** 2)
+        fft_para = {"dt": 1./self.dataset[stacklevel].fs, 
+                     "freqmin": f1,
+                     "freqmax": f2,
+                     "smooth_n": 5,
+                     "freq_norm": "phase_only"}
+        # freq = np.fft.rfftfreq(n=2*self.dataset[stacklevel].npts,
+        #                        d=1./self.dataset[stacklevel].fs)
+        # ix_f1 = np.argmin((freq - f1) ** 2)
+        # ix_f2 = np.argmin((freq - f2) ** 2)
 
-        taper = np.ones(freq.shape, dtype=np.complex)
-        taper[ix_f1: ix_f2] += tukey(ix_f2 - ix_f1)
+        # taper = np.ones(freq.shape, dtype=np.complex)
+        # taper[ix_f1: ix_f2] += tukey(ix_f2 - ix_f1)
 
         for i, tr in enumerate(self.dataset[stacklevel].data):
-            spec = np.fft.rfft(td_taper * tr, n=2*self.dataset[stacklevel].npts)
-            nume = spec.copy() * taper
-            nume = self.moving_average(nume, n=npts_smooth)
-            spec /= nume
-            self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
-                                                  n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
+            # spec = np.fft.rfft(td_taper * tr, n=2*self.dataset[stacklevel].npts)
+            # nume = spec.copy() * taper
+            # nume = self.moving_average(nume, n=npts_smooth)
+            # spec /= nume
+            # self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
+            #                                       n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
+            self.dataset[stacklevel].data[i, :] = whiten(td_taper * tr, fft_para)
 
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=np.complex)
@@ -815,6 +821,7 @@ class CCDataset(object):
             dvv[cnt, :] = dvvp
             dvv_times[cnt] = timestamps[i]
             ccoeff[cnt] = cdpp
+            print(ccoeff[cnt])
             best_ccoeff[cnt] = coeffp
             dvv_error[cnt, :] = delta_dvvp
             cnt += 1
@@ -1028,8 +1035,8 @@ class CCDataset(object):
             ax1.pcolormesh(lag, t_to_plot, dat_mat, vmax=vmax, vmin=vmin,
                            cmap=cmap)
 
-        #ylabels.append(UTCDateTime("2017,262").timestamp)
-        #ylabelticks.append("Puebla")
+        ylabels.append(UTCDateTime("2017,262").timestamp)
+        ylabelticks.append("EQ La Puebla")
 
         ax1.set_title(self.station_pair)
         ax1.set_ylabel("Normalized stacks (-)")
