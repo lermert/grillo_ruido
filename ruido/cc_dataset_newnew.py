@@ -706,23 +706,29 @@ class CCDataset(object):
             win[ix_0: ix_1] = 1.0
         return(win)
 
-    # def window_stacks(self, t_mid, hw, window_type="hann", tukey_alpha=0.2, overwrite=False):
+    def post_whiten(self, f1, f2, npts_smooth=5, stacklevel=0):
 
-    #     win = self.get_window(t_mid, hw, window_type=window_type, alpha=tukey_alpha)
+        td_taper = cosine_taper(self.dataset[stacklevel].npts, 0.1)
+        freq = np.fft.rfftfreq(n=2*self.dataset[stacklevel].npts,
+                               d=1./self.dataset[stacklevel].fs)
+        ix_f1 = np.argmin((freq - f1) ** 2)
+        ix_f2 = np.argmin((freq - f2) ** 2)
 
-    #     if overwrite:
-    #         for (k, stack) in self.stacks.items():
-    #             self.stacks[k].data *= win
-    #     else:
-    #         self.windowed_stacks = {}
-    #         for (k, stack) in self.stacks.items():
-    #             self.windowed_stacks[k] = Trace((stack.data * win).copy())
-    #             self.windowed_stacks[k].stats.sampling_rate = stack.stats.sampling_rate
+        taper = np.ones(freq.shape, dtype=np.complex)
+        taper[ix_f1: ix_f2] += tukey(ix_f2 - ix_f1)
 
-    # def window_reference(self, t_mid, hw, window_type="hann", tukey_alpha=0.2):
+        for i, tr in enumerate(self.dataset[stacklevel].data):
+            spec = np.fft.rfft(td_taper * tr, n=2*self.dataset[stacklevel].npts)
+            nume = spec.copy() * taper
+            nume = self.moving_average(nume, n=npts_smooth)
+            spec /= nume
+            self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
+                                                  n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
 
-    #     win = self.get_window(t_mid, hw, window_type=window_type, alpha=tukey_alpha)
-    #     return(self.ref * win)
+    def moving_average(self, a, n=3):
+        ret = np.cumsum(a, dtype=np.complex)
+        ret[n:] = ret[n:] - ret[:-n]
+        return ret / n
 
     def window_data(self, stacklevel, t_mid, hw, window_type="hann", tukey_alpha=0.2):
         # check that the input array has 2 dimensions
