@@ -3,13 +3,14 @@ import h5py
 from obspy import Trace, UTCDateTime
 from obspy.signal.invsim import cosine_taper
 import matplotlib.pyplot as plt
-from scipy.signal import sosfilt, sosfiltfilt, hann, tukey, 
-from scipy.fft import next_fast_len
+from scipy.signal import sosfilt, sosfiltfilt, hann, tukey
+from scipy.fftpack import next_fast_len
 from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
 import os
-from noisepy.noise_module import stretching, dtw_dvv, stretching_vect, wts_dvv, whiten
+from noisepy.noise_module import stretching, dtw_dvv,\
+stretching_vect, wts_dvv, whiten, mwcs_dvv, robust_stack
 from ruido.clustering import cluster, cluster_minibatch
 from obspy.signal.filter import envelope
 from obspy.signal.detrend import polynomial as obspolynomial
@@ -35,6 +36,27 @@ class CCData(object):
             self.kmeans_labels = np.array(kmeans_labels)
         else:
             self.kmeans_labels = None
+        self.add_rms()
+        self.median = np.nanmedian(self.data, axis=0)
+
+    def lose_allzero_windows(self):
+        datanew = []
+        tnew = []
+        kmnew = []
+        for i, d in enumerate(self.data):
+            if d.sum() == 0.0:
+                continue
+            else:
+                datanew.append(d)
+                tnew.append(self.timestamps[i])
+                if self.kmeans_labels is not None:
+                    kmnew.append(self.kmeans_labels[i])
+
+        self.data = np.array(datanew)
+        self.timestamps = np.array(tnew)
+        if self.kmeans_labels is not None:
+            self.kmeans_labels = np.array(kmnew)
+        self.ntraces = self.data.shape[0]
         self.add_rms()
         self.median = np.nanmedian(self.data, axis=0)
 
@@ -154,7 +176,8 @@ class CCDataset(object):
             self.dataset[ix_dataset] = CCData(stacks[ixs], tstamps[ixs], fs)
         else:
             self.dataset[ix_dataset] = CCData(stacks, tstamps, fs)
-
+            if kmeans_labels is not None:
+                self.dataset[ix_dataset].kmeans_labels = kmeans_labels
 
     def __str__(self):
         output = ""
@@ -178,6 +201,13 @@ class CCDataset(object):
         #     pass
         return(output)
 
+    def data_to_envelope(self, stacklevel=1):
+        #replace stacks by their envelope
+
+        newstacks = []
+        for s in self.dataset[stacklevel].data:
+            newstacks.append(envelope(s))
+        self.dataset[stacklevel].data = np.array(newstacks)
 
     def data_to_memory(self, n_corr_max=None, t_min=None, t_max=None, keep_duration=0,
                        normalize=False):
@@ -356,14 +386,13 @@ class CCDataset(object):
         if self.dataset[stacklevel].rms is None:
             self.dataset[stacklevel].add_rms()
         rms = self.dataset[stacklevel].rms[ixs]
-
         if mode == "upper":
-            ixs_keep = np.where(rms <= np.percentile(rms, perc))
+            ixs_keep = np.where(rms <= np.nanpercentile(rms, perc))
         elif mode == "lower":
-            ixs_keep = np.where(rms >= np.percentile(rms, perc))
+            ixs_keep = np.where(rms >= np.nanpercentile(rms, perc))
         elif mode == "both":
-            ixs_keep = np.intersect1d(np.where(rms <= np.percentile(rms, perc)),
-                                      np.where(rms >= np.percentile(rms, 100 - perc)))
+            ixs_keep = np.intersect1d(np.where(rms <= np.nanpercentile(rms, perc)),
+                                      np.where(rms >= np.nanpercentile(rms, 100 - perc)))
         if debug_mode:
             print("Selection by percentile of RMS: Before, After", len(ixs), len(ixs_keep))
 
@@ -380,13 +409,15 @@ class CCDataset(object):
         """
 
         t_to_select = self.dataset[stacklevel].timestamps
-        
+
         # find closest to t0 window
         assert type(t0) in [float, np.float64], "t0 must be floating point time stamp"
 
         # find indices
+        # longer_zero = np.array([len(d) > 0 for d in self.dataset[stacklevel].data])
         ixs_selected = np.intersect1d(np.where(t_to_select >= t0),
                                       np.where(t_to_select < (t0 + duration)))
+                                      # np.where(longer_zero))
 
         # check if selection to do for clusters
         if kmeans_label is not None:
@@ -405,7 +436,7 @@ class CCDataset(object):
         return(ixs_out)
 
     def select_for_stacking(self, ixs, selection_mode, stacklevel=0, bootstrap=False, cc=0.5,
-                            twin=None, ref=None, dist=None, distquant=None, **kwargs):
+                            twin=None, ref=None, dist=None, distquant=None, nr_bootstrap=1, **kwargs):
         """
         Select by: closeness to reference or percentile or...
         Right now this only applies to raw correlations, not to stacks
@@ -457,11 +488,14 @@ class CCDataset(object):
             raise NotImplementedError
 
         if bootstrap:
-            ixs_selected = np.random.choice(ixs_selected, len(ixs_selected))  # sampling with replacing
-
+            ixs_sel = np.zeros((nr_bootstrap, len(ixs_selected)))
+            for i in range(nr_bootstrap):
+                ixs_sel[i, :] = np.random.choice(ixs_selected, len(ixs_selected))  # sampling with replacing
+            ixs_selected = ixs_sel
         return(ixs_selected)
 
-    def stack(self, ixs, stackmode="linear", stacklevel_in=0, stacklevel_out=1, overwrite=False):
+    def stack(self, ixs, stackmode="linear", stacklevel_in=0, stacklevel_out=1, overwrite=False,
+              epsilon_robuststack=None):
         #stack
         if len(ixs) == 0:
             return()
@@ -472,10 +506,19 @@ class CCDataset(object):
         to_stack = self.dataset[stacklevel_in].data
         t_to_stack = self.dataset[stacklevel_in].timestamps.copy()
 
-        #if stackmode == "linear":
-        s = to_stack[ixs].sum(axis=0)
-        newstacks = s / len(ixs)
-        newt = t_to_stack[ixs[0]]
+        if stackmode == "linear":
+            s = to_stack[ixs].sum(axis=0)
+            newstacks = s / len(ixs)
+            newt = t_to_stack[ixs[0]]
+        elif stackmode == "median":
+            newstacks = np.median(to_stack[ixs], axis=0)
+            newt = t_to_stack[ixs[0]]
+        elif stackmode == "robust":
+            newstacks, w, nstep = robust_stack(to_stack[ixs], epsilon_robuststack)
+            print(newstacks.shape, " NEWSTACKS ", nstep)
+            newt = t_to_stack[ixs[0]]
+        else:
+            raise ValueError("Unknown stacking mode {}".format(stackmode))
         # self.stacks[self.timestamps[ixs[0]]] = s
 
         #i#f self.stacks is None:
@@ -697,6 +740,7 @@ class CCDataset(object):
         # half_lag_minus_one = int((self.npts - 1) / 2)
         ix_1 = np.argmin(abs(lag - t_mid - hw))
         ix_0 = np.argmin(abs(lag - t_mid + hw))  # [self.lag > 0]
+        print(lag[ix_0], lag[ix_1], ix_0, ix_1)
         win = np.zeros(lag.shape)
         if window_type == "hann":
             # win[half_lag_minus_one + ix_0 : half_lag_minus_one + ix_1] = hann(ix_1 - ix_0)
@@ -717,10 +761,7 @@ class CCDataset(object):
                      "smooth_N": 5,
                      "freq_norm": "phase_only"}
         freq = np.fft.fftfreq(n=nfft,
-                                d=1./self.dataset[stacklevel].fs)
-        ix_f1 = np.argmin((freq - f1) ** 2)
-        ix_f2 = np.argmin((freq - f2) ** 2)
-        print(freq[ix_f1], freq[ix_f2])
+                              d=1./self.dataset[stacklevel].fs)
         
         for i, tr in enumerate(self.dataset[stacklevel].data):
             spec = np.zeros(freq.shape)
@@ -730,15 +771,17 @@ class CCDataset(object):
             # spec /= nume
             # self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
             #                                       n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
-            spec[ix_f1: ix_f2] = whiten(td_taper * tr, fft_para)
-            self.dataset[stacklevel].data[i, :] = np.fft.rfft(spec, n=nfft)[0: self.dataset[stacklevel].npts]
+            spec = whiten(td_taper * tr, fft_para)
+            self.dataset[stacklevel].data[i, :] = np.real(np.fft.ifft(spec, n=nfft)[0: self.dataset[stacklevel].npts])
 
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=np.complex)
         ret[n:] = ret[n:] - ret[:-n]
         return ret / n
 
-    def window_data(self, stacklevel, t_mid, hw, window_type="hann", tukey_alpha=0.2):
+    def window_data(self, stacklevel, t_mid, hw,
+                    window_type="hann", tukey_alpha=0.2,
+                    cutout=False):
         # check that the input array has 2 dimensions
         to_window = self.dataset[stacklevel].data
         lag = self.dataset[stacklevel].lag
@@ -747,12 +790,24 @@ class CCDataset(object):
 
         win = self.get_window(t_mid, hw, lag, window_type=window_type, alpha=tukey_alpha)
 
-        for ix in range(to_window.shape[0]):
-            to_window[ix, :] *= win
+        if not cutout:
+            for ix in range(to_window.shape[0]):
+                to_window[ix, :] *= win
+        else:
+            new_win_dat = []
+            for ix in range(to_window.shape[0]):
+                ix_to_keep = np.where(win > 0.0)[0]
+                new_win_dat.append(to_window[ix, ix_to_keep])
+            newlag = self.dataset[stacklevel].lag[ix_to_keep]
+            self.dataset[stacklevel].lag = newlag
+            self.dataset[stacklevel].data = new_win_dat
+            self.dataset[stacklevel].npts = len(ix_to_keep)
 
     def measure_dvv(self, ref, f0, f1, stacklevel=1, method="stretching",
                     ngrid=90, dvv_bound=0.03,
-                    measure_smoothed=False, indices=None):
+                    measure_smoothed=False, indices=None,
+                    moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
+                    len_dtw_msr=None):
 
         to_measure = self.dataset[stacklevel].data
         lag = self.dataset[stacklevel].lag
@@ -766,7 +821,7 @@ class CCDataset(object):
         reference = ref.copy()
         para = {}
         para["dt"] = 1. / fs
-        para["twin"] = [lag[0], lag[-1] + 1. / fs]  # [self.lag[0], self.lag[-1] + 1. / self.fs]
+        para["twin"] = [lag[0], lag[-1] + 1. / fs]
         para["freq"] = [f0, f1]
 
         if indices is None:
@@ -775,22 +830,28 @@ class CCDataset(object):
         dvv_times = np.zeros(len(indices))
         ccoeff = np.zeros(len(indices))
         best_ccoeff = np.zeros(len(indices))
-       
 
-        if method in ["stretching"]:
+        if method in ["stretching", "mwcs"]:
             dvv = np.zeros((len(indices), 1))
             dvv_error = np.zeros((len(indices), 1))
         elif method in ["cwt-stretching"]:
-            testmsr = wts_dvv(reference, reference, True, 
-                              para, dvv_bound, ngrid)
-            dvv = np.zeros((len(indices), len(testmsr[1])))
-            dvv_error = np.zeros((len(indices), len(testmsr[1])))
+            if len_dtw_msr is None:
+                testmsr = wts_dvv(reference, reference, True, 
+                                  para, dvv_bound, ngrid)
+                dvv = np.zeros((len(indices), len(testmsr[1])))
+                dvv_error = np.zeros((len(indices), len(testmsr[1])))
+            
         elif method in ["dtw"]:
-            testmsr = dtw_dvv(reference, reference,
-                              para, maxLag=int(1.*fs), b=10, direction=1)
-            dvv = np.zeros((len(indices), len(testmsr[0])))
-            dvv_error = np.zeros((len(indices), len(testmsr[1])))
+            if len_dtw_msr is None:
+                len_dtw_msr = []
+                testmsr = dtw_dvv(reference, reference,
+                              para, maxLag=maxlag_dtw,
+                              b=10, direction=1)
+                len_dtw_msr.append(len(testmsr[0]))
+                len_dtw_msr.append(testmsr[1].shape)
 
+            dvv = np.zeros((len(indices), len_dtw_msr[0]))
+            dvv_error = np.zeros((len(indices), *len_dtw_msr[1]))
         else:
             raise ValueError("Unknown measurement method {}.".format(method))
 
@@ -805,16 +866,28 @@ class CCDataset(object):
                                                         dvv_bound, ngrid, para)
                 cwtfreqs = []
             elif method == "dtw":
-                warppath, dist = dtw_dvv(reference, tr,
-                                   para, maxLag=int(1. * fs),
-                                   b=10, direction=1)
+                dvv_bound = int(dvv_bound)
+                warppath, dist,  coeffor, coeffshift = dtw_dvv(reference, tr,
+                                         para, maxLag=maxlag_dtw,
+                                         b=dvv_bound, direction=1)
+                coeffp = coeffshift
+                cdpp = coeffor
+                delta_dvvp = dist
+                dvvp = warppath
+                cwtfreqs = []
+            elif method == "mwcs":
+                ixsnonzero = np.where(reference != 0.0)
+                dvvp, errp = mwcs_dvv(reference[ixsnonzero],
+                                     tr[ixsnonzero],
+                                     moving_window_length,
+                                     slide_step, para)
+                delta_dvvp = errp
                 coeffp = np.nan
                 cdpp = np.nan
-                delta_dvvp = dist
-                dvvp = list(warppath)
+                cwtfreqs = []
             elif method == "cwt-stretching":
                 cwtfreqs, dvvp, errp = wts_dvv(reference, tr, True, 
-                                             para, dvv_bound, ngrid)
+                                               para, dvv_bound, ngrid)
                 delta_dvvp = errp
                 coeffp = np.nan
                 cdpp = np.nan
@@ -823,7 +896,7 @@ class CCDataset(object):
             dvv[cnt, :] = dvvp
             dvv_times[cnt] = timestamps[i]
             ccoeff[cnt] = cdpp
-            print(ccoeff[cnt])
+            # print(ccoeff[cnt])
             best_ccoeff[cnt] = coeffp
             dvv_error[cnt, :] = delta_dvvp
             cnt += 1
@@ -908,7 +981,8 @@ class CCDataset(object):
 
     def plot_stacks(self, stacklevel=1, outfile=None, seconds_to_show=20, scale_factor_plotting=0.1,
         plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, mask_gaps=False, step=None, figsize=None,
-        color_by_cc=False, normalize_all=False, label_style="month", ax=None, plot_envelope=False, ref=None):
+        color_by_cc=False, normalize_all=False, label_style="month", ax=None, plot_envelope=False, ref=None,
+        mark_17_quake=False):
 
         if mask_gaps and step == None:
             raise ValueError("To mask the gaps, you must provide the step between successive windows.")
@@ -977,7 +1051,6 @@ class CCDataset(object):
                         dat_mat[ix, :] = tr
                     if plot_envelope:
                         dat_mat[ix, :] = envelope(dat_mat[ix, :])
-
                     t = t_to_plot[ix]
                     if label_style == "month":
                         if UTCDateTime(t).strftime("%Y%m") not in months:
@@ -1014,7 +1087,7 @@ class CCDataset(object):
                     else:
                         dat_mat[ix_t, :] = tr
                     if plot_envelope:
-                        dat_mat[ix_t, :] = envelope(dat_mat[ix, :])
+                        dat_mat[ix_t, :] = envelope(dat_mat[ix_t, :])
                     if label_style == "month":
                         if UTCDateTime(t).strftime("%Y%m") not in months:
                             ylabels.append(t_to_plot_all[ix_t])
@@ -1037,8 +1110,9 @@ class CCDataset(object):
             ax1.pcolormesh(lag, t_to_plot, dat_mat, vmax=vmax, vmin=vmin,
                            cmap=cmap)
 
-        ylabels.append(UTCDateTime("2017,262").timestamp)
-        ylabelticks.append("EQ La Puebla")
+        if mark_17_quake:
+            ylabels.append(UTCDateTime("2017,262").timestamp)
+            ylabelticks.append("EQ Puebla")
 
         ax1.set_title(self.station_pair)
         ax1.set_ylabel("Normalized stacks (-)")
