@@ -716,7 +716,6 @@ class CCDataset(object):
         elif filter_type == "cheby2_bandpass":
             sos = filter.cheby2_bandpass(df=fs, freq0=f_hp, freq1=f_lp,
                                          maxorder=maxorder)
-            print(sos)
         elif filter_type == "cwt":
             taper = cosine_taper(npts, taper_perc)
             for i, tr in enumerate(to_filter):
@@ -740,7 +739,6 @@ class CCDataset(object):
         # half_lag_minus_one = int((self.npts - 1) / 2)
         ix_1 = np.argmin(abs(lag - t_mid - hw))
         ix_0 = np.argmin(abs(lag - t_mid + hw))  # [self.lag > 0]
-        print(lag[ix_0], lag[ix_1], ix_0, ix_1)
         win = np.zeros(lag.shape)
         if window_type == "hann":
             # win[half_lag_minus_one + ix_0 : half_lag_minus_one + ix_1] = hann(ix_1 - ix_0)
