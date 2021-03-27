@@ -18,7 +18,8 @@ misalignment_threshold = 0.5
 # station renaming: SEED convention does not allow station names to be
 # arbitrarily long. Also, human readable station names nice for some purposes
 stamap = {"3ef3d787af85": "ANST", "094330d18e77": "BDTL",\
-          "d11199910e51": "COAM", "029": "029"}
+          "d11199910e51": "COAM", "029": "029",
+          "8CAAB5A53D5C": "SEA1"}
 
 
 def clean_up(stream_in):
