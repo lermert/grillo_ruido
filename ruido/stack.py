@@ -1,5 +1,5 @@
 # coding: utf-8
-from ruido.cc_dataset_newnew import CCDataset, CCData
+from ruido.cc_dataset_newnewnew import CCDataset, CCData
 from mcmc_inversion import MarkovChainMonteCarlo
 from obspy import UTCDateTime
 from obspy.signal.filter import envelope
@@ -80,24 +80,33 @@ for cpair in comp_pairs:
         dset = CCDataset(input_files[0])
         for i, f in enumerate(input_files):
             if i == 0:
-                dset.data_to_memory(n_corr_max=None)
+                dset.data_to_memory_bulk(n_corr_max=None)
+                print("Read ")
+                print(time.time() - trun)
                 dset.dataset[0].lose_allzero_windows()
-                dset.demean()
-                dset.detrend()
+                print("Removed zeros ")
+                print(time.time() - trun)
+                # dset.demeandetrend(npool=1)
+                #dset.detrend()
                 dset.filter_data(f_hp=freq_band[0], f_lp=freq_band[1], taper_perc=0.2,
                                  stacklevel=0, filter_type=filter_type,
-                                 maxorder=filter_maxord)
+                                 maxorder=filter_maxord, npool=8)
+                print("Filter ")
+                print(time.time() - trun)
                 dset.dataset[0].add_rms()
                 add_stacks(dset)
+                print("stacked ")
+                print(time.time() - trun)
+                
             else:
                 dset.add_datafile(f)
-                dset.data_to_memory(keep_duration=duration)
+                dset.data_to_memory_bulk(keep_duration=duration)
                 dset.dataset[0].lose_allzero_windows()
-                dset.demean()
-                dset.detrend()
+                # dset.demeandetrend(npool=4)
+                #dset.detrend()
                 dset.filter_data(f_hp=freq_band[0], f_lp=freq_band[1], taper_perc=0.2,
                                  stacklevel=0, filter_type=filter_type,
-                                 maxorder=filter_maxord)
+                                 maxorder=filter_maxord, npool=8)
                 dset.dataset[0].add_rms()
                 add_stacks(dset)
 

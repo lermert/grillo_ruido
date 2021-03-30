@@ -47,7 +47,18 @@ class FiltPool(object):
         else:
             trace = sosfilt(self.sos, self.taper * trace)
 
-        
+class ReadPool(object):
+    def __init__(self, file, array_out, array_out_time):
+        self.file = file
+        self.array_out = array_out
+        self.array_out_time = array_out_time
+
+    def run(self, ix):
+        self.array_out[ix] = self.file["corr_windows"]["data"][ix]
+        tstamp = self.datafile["corr_windows"]["timestamps"][ix]
+        tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+        self.array_out_time[ix] = UTCDateTime(tstmp).timestamp
+
 class CCData(object):
     """
     Class for keeping cross-correlation data and stacks of cross-correlation data
@@ -239,6 +250,95 @@ class CCDataset(object):
             newstacks.append(envelope(s))
         self.dataset[stacklevel].data = np.array(newstacks)
 
+
+    def data_to_memory_bulk(self, n_corr_max=None, keep_duration=0,
+                            normalize=False):
+        # read data from correlation file into memory and store in dataset[0]
+        # use self.datafile
+        # get fs, data, timestamps
+        # commit to a new dataset object or add it to existing
+        fs = dict(self.datafile['stats'].attrs)['sampling_rate']
+        if "data" in list(self.datafile["corr_windows"].keys()):
+            npts = self.datafile['corr_windows']["data"][0].shape[0]
+            ntraces = len(np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0])
+        else:  #  old file format
+            raise NotImplementedError("data_to_memory_par does not workf for \
+                old file format, use data_to_memory instead")
+
+        if n_corr_max is None:
+            n_corr_max = ntraces
+
+        # allocate data
+        try:
+            data = np.zeros((n_corr_max, npts))
+        except MemoryError:
+            raise MemoryError("Data doesn't fit in memory, set a lower n_corr_max")
+
+        # allocate timestamps array
+        timestamps = np.zeros(n_corr_max)
+        data[0: n_corr_max, :] = self.datafile["corr_windows"]["data"][0: n_corr_max]
+
+        for i in range(n_corr_max):
+            tstamp = self.datafile["corr_windows"]["timestamps"][i]
+            tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+            timestamps[i] = UTCDateTime(tstmp).timestamp
+        
+        if normalize:
+            # absolute last-resort-I-cannot-reprocess way to deal with amplitude issues
+            for tr in data:
+                tr /= tr.max()
+
+        print("Read to memory from {} to {}".format(UTCDateTime(timestamps[0]),
+                                                    UTCDateTime(timestamps[-1])))
+
+        if 0 in list(self.dataset.keys()):
+            self.dataset[0].extend(data, timestamps, fs, keep_duration=keep_duration)
+        else:
+            self.dataset[0] = CCData(data, timestamps, fs)
+
+    def data_to_memory_par(self, n_corr_max=None, keep_duration=0,
+                           normalize=False, npool=4):
+        # read data from correlation file into memory and store in dataset[0]
+        # use self.datafile
+        # get fs, data, timestamps
+        # commit to a new dataset object or add it to existing
+        fs = dict(self.datafile['stats'].attrs)['sampling_rate']
+        if "data" in list(self.datafile["corr_windows"].keys()):
+            npts = self.datafile['corr_windows']["data"][0].shape[0]
+            ntraces = len(np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0])
+        else:  #  old file format
+            raise NotImplementedError("data_to_memory_par does not workf for \
+                old file format, use data_to_memory instead")
+
+        if n_corr_max is None:
+            n_corr_max = ntraces
+
+        # allocate data
+        try:
+            data = np.zeros((n_corr_max, npts))
+        except MemoryError:
+            raise MemoryError("Data doesn't fit in memory, set a lower n_corr_max")
+
+        # allocate timestamps array
+        timestamps = np.zeros(n_corr_max)
+
+        readpool = ReadPool(self.datafile, data, timestamps)
+        with Pool(npool) as p:
+            p.map(readpool.run, range(len(self.datafile["corr_windows"]["data"])))
+
+        if normalize:
+            # absolute last-resort-I-cannot-reprocess way to deal with amplitude issues
+            for tr in data:
+                tr /= tr.max()
+
+        print("Read to memory from {} to {}".format(UTCDateTime(timestamps[0]),
+                                                    UTCDateTime(timestamps[-1])))
+
+        if 0 in list(self.dataset.keys()):
+            self.dataset[0].extend(data, timestamps, fs, keep_duration=keep_duration)
+        else:
+            self.dataset[0] = CCData(data, timestamps, fs)
+
     def data_to_memory(self, n_corr_max=None, t_min=None, t_max=None, keep_duration=0,
                        normalize=False):
         # read data from correlation file into memory and store in dataset[0]
@@ -266,20 +366,16 @@ class CCDataset(object):
         # allocate timestamps array
         timestamps = np.zeros(n_corr_max)
         try:  # new file format
-            for i, v in enumerate(self.datafile["corr_windows"]["data"][:]):
+            for i in range(len(self.datafile["corr_windows"]["data"])):  # , v in enumerate(self.datafile["corr_windows"]["data"][:]):
                 if i == n_corr_max:
                     break
-
-                data[i, :] = v[:]
-                #data.append(v)
+                v = self.datafile["corr_windows"]["data"][i]
+                data[i, :] = v
                 tstamp = self.datafile["corr_windows"]["timestamps"][i]
-                #self.datakeys[i] = tstamp
-
                 tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
                 timestamps[i] = UTCDateTime(tstmp).timestamp
                 if t_max is not None and tstmp > t_max:
                     break
-                #timestamps.append(UTCDateTime(tstmp).timestamp)
         except KeyError:  # old file format
             for i, (k, v) in enumerate(self.datafile["corr_windows"].items()):
                 if i == n_corr_max:
@@ -677,6 +773,7 @@ class CCDataset(object):
     def demean(self, stacklevel=0):
 
         to_demean = self.dataset[stacklevel].data
+
         for d in to_demean:
             d -= d.mean()
 
