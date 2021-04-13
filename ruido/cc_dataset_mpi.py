@@ -559,22 +559,9 @@ class CCDataset(object):
             self.dataset[stacklevel].data = new_win_dat
             self.dataset[stacklevel].npts = len(ix_to_keep)
 
-    def measure_dvv(self, ref, f0, f1, stacklevel=1, method="stretching",
-                    ngrid=90, dvv_bound=0.03,
-                    measure_smoothed=False, indices=None,
-                    moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
-                    len_dtw_msr=None):
-        if rank != 0:
-            raise ValueError("Call this function only on one process")
-        to_measure = self.dataset[stacklevel].data
-        lag = self.dataset[stacklevel].lag
-        timestamps = self.dataset[stacklevel].timestamps
-        # print(timestamps)
-        fs = self.dataset[stacklevel].fs
-
-        if len(to_measure) == 0:
-            return()
-
+    def run_measurement(self, indices, to_measure, timestamps,
+                        ref, fs, lag, f0, f1, ngrid,
+                        dvv_bound, method="stretching"):
         reference = ref.copy()
         para = {}
         para["dt"] = 1. / fs
@@ -613,9 +600,15 @@ class CCDataset(object):
             raise ValueError("Unknown measurement method {}.".format(method))
 
 
-        cnt = 0
+        #cnt = 0
         for i, tr in enumerate(to_measure):
             if i not in indices:
+                dvv[cnt, :] = np.nan
+                dvv_times[cnt] = timestamps[i]
+                ccoeff[cnt] = np.nan
+                # print(ccoeff[cnt])
+                best_ccoeff[cnt] = np.nan
+                dvv_error[cnt, :] = np.nan
                 continue
 
             if method == "stretching":
@@ -650,15 +643,106 @@ class CCDataset(object):
                 cdpp = np.nan
                 cwt_freqs = cwtfreqs
 
-            dvv[cnt, :] = dvvp
-            dvv_times[cnt] = timestamps[i]
-            ccoeff[cnt] = cdpp
+            dvv[i, :] = dvvp
+            dvv_times[i] = timestamps[i]
+            ccoeff[i] = cdpp
             # print(ccoeff[cnt])
-            best_ccoeff[cnt] = coeffp
-            dvv_error[cnt, :] = delta_dvvp
-            cnt += 1
-        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
+            best_ccoeff[i] = coeffp
+            dvv_error[i, :] = delta_dvvp
+            # cnt += 1
+        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error)
 
+    def measure_dvv_par(self, ref, f0, f1, stacklevel=1, method="stretching",
+                        ngrid=100, dvv_bound=0.03,
+                        measure_smoothed=False, indices=None,
+                        moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
+                        len_dtw_msr=None):
+        # "WTF! Why is this so complicated??" -- I handled it this way because only rank 0 actually has the data
+        # The reason for this is that if we create copies of the entire dataset on multiple ranks, 
+        # the memory usage will drastically increase
+        # in the future maybe re-write it all so that each rank holds a chunk of the data (maybe better 
+        # but I don't have time to put that in rn). Also more complicated as ranks will have to exchange specific data.
+        if indices is not None:
+            if len(indices) < 10:
+                warn("This method measures all windows, if you are only planning to measure a few, run measure_dvv on one process.")
+        if rank == 0:
+            ndata = len(self.dataset[stacklevel].data)
+            nshare = ndata // size
+            nrest = ndata % size
+
+            to_measure = self.dataset[stacklevel].data[0: ndata - nrest]
+            timestamps = self.dataset[stacklevel].timestamps[0: ndata - nrest]
+            npts = self.dataset[stacklevel].npts
+            fs = self.dataset[stacklevel].fs
+            lag = self.dataset[stacklevel].lag
+        else:
+            ndata = None
+            nshare = None
+            to_measure = None
+            timestamps = None
+            npts = None
+            fs = None
+            nrest = None
+            lag = None
+        fs = comm.bcast(fs, root=0)
+        nshare = comm.bcast(nshare, root=0)
+        ndata = comm.bcast(ndata, root=0)
+        nrest = comm.bcast(nrest, root=0)
+        npts = comm.bcast(npts, root=0)
+        lag = comm.bcast(lag, root=0)
+
+        to_measure_part = np.zeros((nshare, npts))
+        timestamps_part = np.zeros(nshare)
+        dvv_all = np.zeros((ndata, 1))
+        dvv_error_all = np.zeros((ndata, 1))
+        timestamps_all = np.zeros((ndata, 1))
+        ccoeff_all = np.zeros((ndata, 1))
+        best_ccoeff_all = np.zeros((ndata, 1))
+        # scatter the arrays
+        comm.Scatter(to_measure, to_measure_part, root=0)
+        comm.Scatter(timestamps, timestamps_part, root=0)
+
+        print("rank {}, nr traces to measure {}".format(rank, len(to_measure_part)))
+
+        dvv, dvv_times, ccoeff, best_ccoeff, dvv_error = \
+        self.run_measurement(indices, to_measure_part, timestamps_part,
+                             ref, fs, lag, f0, f1, ngrid,
+                             dvv_bound, method="stretching")
+
+        comm.Gather(dvv, dvv_all[0: ndata - nrest], root=0)
+        comm.Gather(dvv_times, timestamps_all[: ndata - nrest], root=0)
+        comm.Gather(dvv_error, dvv_error_all[: ndata - nrest], root=0)
+        comm.Gather(ccoeff, ccoeff_all[: ndata - nrest], root=0)
+        comm.Gather(best_ccoeff, best_ccoeff_all[: ndata - nrest], root=0)
+
+        if rank == 0:
+            print(dvv_all.shape)
+            print(ndata)
+            print(nrest)
+            if nrest > 0:
+                to_measure_extra = self.dataset[stacklevel].data[ndata - nrest:]
+                timestamps_extra = self.dataset[stacklevel].timestamps[ndata - nrest:]
+                if indices is None:
+                    indices = range(len(to_measure_extra))
+                dvv, dvv_times, ccoeff, best_ccoeff, dvv_error = \
+                self.run_measurement(indices, to_measure_extra, timestamps_extra,
+                                     ref, fs, lag, f0, f1, ngrid,
+                                     dvv_bound, method="stretching")
+              
+                dvv_all[ndata - nrest:, :] = dvv
+                timestamps_all[ndata - nrest:, 0] = dvv_times
+                ccoeff_all[ndata - nrest:, 0] = ccoeff
+                best_ccoeff_all[ndata - nrest:, 0] = best_ccoeff
+                dvv_error_all[ndata - nrest:, :] = dvv_error
+            else:
+                pass
+        else:
+            pass
+
+        if rank == 0:
+            return(dvv_all, timestamps, ccoeff_all, best_ccoeff_all, dvv_error_all, [])
+        else:
+            return([],[],[],[],[],[])
     def interpolate_stacks(self, new_fs, stacklevel=1):
         if rank != 0:
             raise ValueError("Call this function only on one process")
