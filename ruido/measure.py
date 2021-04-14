@@ -13,9 +13,7 @@ input_files = glob("stacks_from_workstation/*.h5")
 input_files.sort()
 
 measurement_type = "stretching"
-station = os.path.basename(input_files[0].split(".")[1])
-ch1 = os.path.basename(input_files[0].split(".")[3][0: 3])
-ch2 = os.path.basename(input_files[0].split(".")[6])
+
 new_fs = 100.0
 plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
 twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
@@ -23,6 +21,9 @@ twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
 freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
 
 for ixf, input_file in enumerate(input_files):
+    station = os.path.basename(input_file.split(".")[1])
+    ch1 = os.path.basename(input_file.split(".")[2][0: 3])
+    ch2 = os.path.basename(input_file.split(".")[4])
     freq_band = freq_bands[ixf]
 
     dset = CCDataset(input_file)
