@@ -38,17 +38,12 @@ for ixt, t_or in enumerate(t):
         # we have a gap
         ttemp = t[ixt - 1] + stackstep
         while ttemp <= t_or - stackstep:
-            #print("gap")
-            #print(t[ixt-1], ttemp, t_or)
             t_clean.append(ttemp)
             ttemp += stackstep
         t_clean.append(t_or)
     else:
         # no gap, just normal
-        #print("normal")
-        #print(t[ixt-1], t_or)
         t_clean.append(t_or)
-    #print("*-"*8)
 n = len(t_clean)
 n_old = len(t)
 # print(t_clean)
@@ -68,7 +63,6 @@ dvv_clean = []
 err_clean = []
 for i in range(n):
     if t_clean[i] not in t:
-        #print("no ref: ", i)
         # gap
         for j in range(i + 1, n):
             dvv_clean.append(fill_value)
@@ -77,12 +71,10 @@ for i in range(n):
         ix1 = np.where(t == t_clean[i])[0][0]
         for j in range(i + 1, n):
             if t_clean[j] not in t:
-                #print("no single: ", j)
                 # gap
                 err_clean.append(fill_value_err)
                 dvv_clean.append(fill_value)
             else:
-                #print("found: ", i, j)
                 # find global index of sample
                 ix2 = np.where(t == t_clean[j])[0][0]
                 global_index = 0
