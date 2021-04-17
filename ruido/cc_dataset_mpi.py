@@ -702,7 +702,7 @@ class CCDataset(object):
         comm.Scatter(to_measure, to_measure_part, root=0)
         comm.Scatter(timestamps, timestamps_part, root=0)
 
-        print("rank {}, nr traces to measure {}".format(rank, len(to_measure_part)))
+        # print("rank {}, nr traces to measure {}".format(rank, len(to_measure_part)))
 
         dvv, dvv_times, ccoeff, best_ccoeff, dvv_error = \
         self.run_measurement(indices, to_measure_part, timestamps_part,

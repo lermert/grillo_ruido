@@ -18,9 +18,10 @@ new_fs = 100.0
 plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
 twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
          [[4., 10.]], [[2., 5.]], [[2., 5.]], [[1., 2.5]]]
-freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
+freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [0.75, 1.5], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
 
 for iinf, input_file in enumerate(input_files):
+    ixf = iinf % len(freq_bands)
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])
