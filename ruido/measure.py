@@ -94,7 +94,7 @@ for iinf, input_file in enumerate(input_files):
                 best_ccoeff, dvv_error, cwtfreqs = dset.measure_dvv_par(f0=freq_band[0], f1=freq_band[1], ref=ref,
                                                                         ngrid=100, method="stretching",
                                                                         dvv_bound=maxdvv, stacklevel=1,
-                                                                        indices=range(i+1, n))
+                                                                        indices=np.arange(i+1, n))
             if rank == 0:
                 for j in range(len(dvv_timest)): #range(i + 1, n):
                     data_dvv[counter] = dvv[j]
