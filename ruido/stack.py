@@ -42,9 +42,12 @@ robuststack_epsilon = 1.e-3
 
 # Script:
 def add_stacks(dset):
-
     print(dset)
-    t_running = max(t0, dset.dataset[0].timestamps.min(), dset.dataset[1].timestamps.max() + step)
+    if len(dset.dataset) == 1:
+        t_running = max(t0, dset.dataset[0].timestamps.min())
+    else:
+        t_running = max(t0, dset.dataset[0].timestamps.min(), dset.dataset[1].timestamps.max() + step)
+
     while t_running < min(t1, dset.dataset[0].timestamps.max()):
         stimes = dset.group_for_stacking(t_running, duration=duration)
         stimes = dset.select_for_stacking(stimes, "rms_percentile", bootstrap=False,

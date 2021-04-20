@@ -19,6 +19,9 @@ plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
 twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
          [[4., 10.]], [[2., 5.]], [[2., 5.]], [[1., 2.5]]]
 freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [0.75, 1.5], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
+badtimes = [[UTCDateTime("1998,180").timestamp, UTCDateTime("2000,001").timestamp],
+            [UTCDateTime("2001,001").timestamp, UTCDateTime("2003,001").timestamp]]
+
 
 for iinf, input_file in enumerate(input_files):
     ixf = iinf % len(freq_bands)
@@ -69,6 +72,13 @@ for iinf, input_file in enumerate(input_files):
         if rank == 0:
             data = dset.dataset[1].data
             tstmps = dset.dataset[1].timestamps
+            # cut out times where the station wasn't operating well
+            for badwindow in badtimes:
+                ixbw1 = np.argmin((tstmps - badwindow[0]) ** 2)
+                ixbw2 = np.argmin((tstmps - badwindow[1]) ** 2)
+                for ixbad in range(ixbw1, ixbw2):
+                    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
+                    data[ixbad, :] = frac * data[ixbw1, :] + (1-frac) * data[ixbw2, :] 
 
         # fill dvv array & G matrix
         n = comm.bcast(n, root=0)
@@ -82,10 +92,11 @@ for iinf, input_file in enumerate(input_files):
             ref = comm.bcast(ref, root=0)
             dvv, dvv_timest, ccoeff, \
                 best_ccoeff, dvv_error, cwtfreqs = dset.measure_dvv_par(f0=freq_band[0], f1=freq_band[1], ref=ref,
-                                                                    ngrid=100, method="stretching",
-                                                                    dvv_bound=maxdvv, stacklevel=1)
+                                                                        ngrid=100, method="stretching",
+                                                                        dvv_bound=maxdvv, stacklevel=1,
+                                                                        indices=range(i+1, n))
             if rank == 0:
-                for j in range(i + 1, n):
+                for j in range(len(dvv_timest)): #range(i + 1, n):
                     data_dvv[counter] = dvv[j]
                     data_dvv_err[counter] = dvv_error[j]
                     counter += 1
