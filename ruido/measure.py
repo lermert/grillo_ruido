@@ -90,15 +90,12 @@ for iinf, input_file in enumerate(input_files):
             else:
                 ref = None
             ref = comm.bcast(ref, root=0)
-            if rank == 0:
-                dset.dataset[2] = CCData(dset.dataset[1].data[i+1:].copy(),
-                                  dset.dataset[1].timestamps[i+1:].copy(), dset.dataset[1].fs)
             dvv, dvv_timest, ccoeff, \
                 best_ccoeff, dvv_error, cwtfreqs = dset.measure_dvv_par(f0=freq_band[0], f1=freq_band[1], ref=ref,
                                                                         ngrid=100, method="stretching",
-                                                                        dvv_bound=maxdvv, stacklevel=2)
+                                                                        dvv_bound=maxdvv, stacklevel=1)
             if rank == 0:
-                for j in range(len(dvv_timest)): #range(i + 1, n):
+                for j in range(i + 1, n):
                     data_dvv[counter] = dvv[j]
                     data_dvv_err[counter] = dvv_error[j]
                     counter += 1
