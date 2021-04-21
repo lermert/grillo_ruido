@@ -62,16 +62,11 @@ for iinf, input_file in enumerate(input_files):
         if rank == 0:
             dset.window_data(t_mid=t_mid, hw=hw, window_type="boxcar", stacklevel=1)
             # define the tasks of measuring dvv and allocate array
-            n = len(dset.dataset[1].timestamps)
-            k = int(n * (n - 1) / 2.)
-            data_dvv = np.zeros(k)
-            data_dvv_err = np.zeros(k)
         else:
             n = 0
 
         if rank == 0:
-            data = dset.dataset[1].data
-            tstmps = dset.dataset[1].timestamps
+            tstmps = dset.dataset[0].timestamps
             # cut out times where the station wasn't operating well
             bad_ixs = []
             for badwindow in badtimes:
@@ -79,8 +74,13 @@ for iinf, input_file in enumerate(input_files):
                 ixbw2 = np.argmin((tstmps - badwindow[1]) ** 2)
                 bad_ixs.extend(list(np.arange(ixbw1, ixbw2)))
             good_windows = [ixwin for ixwin in range(len(tstmps)) if not ixwin in bad_ixs]
-            data = data[good_windows]
-            tstmps = tstmps[good_windows]
+            data = dset.dataset[1].data[good_windows]
+            tstmps = dset.dataset[1].timestamps[good_windows]
+
+            n = len(dset.dataset[1].timestamps)
+            k = int(n * (n - 1) / 2.)
+            data_dvv = np.zeros(k)
+            data_dvv_err = np.zeros(k)
                 #for ixbad in range(ixbw1, ixbw2):
                 #
                 #    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
@@ -111,5 +111,5 @@ for iinf, input_file in enumerate(input_files):
 
             results["dvv_data"] = data_dvv
             results["dvv_err"] = data_dvv_err
-            results["timestamps"] = dset.dataset[1].timestamps
+            results["timestamps"] = tstmps #dset.dataset[1].timestamps
             np.save("alltoall_dvv_{}_{}_{}-{}_{}-{}Hz_{}-{}s.npy".format("stretching", station, ch1, ch2, *freq_band, *twin), results)
