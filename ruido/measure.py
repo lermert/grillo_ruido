@@ -73,12 +73,18 @@ for iinf, input_file in enumerate(input_files):
             data = dset.dataset[1].data
             tstmps = dset.dataset[1].timestamps
             # cut out times where the station wasn't operating well
+            bad_ixs = []
             for badwindow in badtimes:
                 ixbw1 = np.argmin((tstmps - badwindow[0]) ** 2)
                 ixbw2 = np.argmin((tstmps - badwindow[1]) ** 2)
-                for ixbad in range(ixbw1, ixbw2):
-                    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
-                    data[ixbad, :] = frac * data[ixbw1, :] + (1-frac) * data[ixbw2, :] 
+                bad_ixs.extend(list(np.arange(ixbw1, ixbw2)))
+            good_windows = [ixwin for ixwin in range(len(tstmps)) if not ixwin in bad_ixs]
+            data = data[good_windows]
+            tstmps = tstmps[good_windows]
+                #for ixbad in range(ixbw1, ixbw2):
+                #
+                #    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
+                #    data[ixbad, :] = frac * data[ixbw1, :] + (1-frac) * data[ixbw2, :] 
 
         # fill dvv array & G matrix
         n = comm.bcast(n, root=0)
