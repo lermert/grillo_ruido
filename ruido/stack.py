@@ -17,20 +17,20 @@ rank = comm.Get_rank()
 # =================================
 # INPUT
 # =================================
-input_file_basename = "{}/G.UNM.*.{}--G.UNM.*.{}.pcc.windows.h5"
-output_file_basename = "G.UNM.{}--G.UNM.{}.pcc.{}.h5"
-#years = range(1995, 2022)
-years = ["../datasets/"]
-comp_pairs = [["HNZ", "HNZ"]]#[["BHZ", "BHE"], ["BHZ", "BHN"], ["BHZ", "BHZ"], ["BHN", "BHE"]]
+input_file_basename = "{}_raw/G.UNM.*.{}--G.UNM.*.{}.ccc.windows.h5"
+output_file_basename = "G.UNM.{}--G.UNM.{}.ccc.{}.h5"
+years = range(1995, 2022)
+# years = ["../datasets/"]
+comp_pairs =[["BHZ", "BHE"], ["BHZ", "BHN"], ["BHZ", "BHZ"], ["BHN", "BHE"], ["BHN", "BHN"], ["BHE", "BHE"]]
 station = "G.UNM"  # for metadata table
-freq_bands = [[0.5, 1.0], [1.0, 2.0], [2., 4.]]
-twins_plot = [[-40., 40.], [-20., 20.], [-10., 10.],]
+freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.0], [1.0, 2.0],[1.25, 1.75], [2., 4.], [2.5, 3.5], [4.0, 8.0]]
+twins_plot = [[-100, 100], [-60, 60], [-40., 40.], [-20., 20.], [-20., 20.], [-10., 10.], [-10., 10.], [-6., 6.]]
 scale_factor_plotting = 1.0
-colormap = plt.cm.bone
+colormap = plt.cm.jet
 plotlabel = "year"
-duration = 3 * 86400.
-step = 3 *  86400.
-minimum_stack_len = 100
+duration = 30 * 86400.
+step = 30 *  86400.
+minimum_stack_len = 1000
 t0 = UTCDateTime("1995,01,01").timestamp
 t1 = UTCDateTime("2021,02,01").timestamp
 filter_type = "cheby2_bandpass"
@@ -135,7 +135,7 @@ for cpair in comp_pairs:
         # save the stacks
         if rank == 0:
             print(dset)
-            outfile = output_file_basename.format(*cpair, "stacks_" + UTCDateTime(t0).strftime("%Y") +\
+            outfile = output_file_basename.format(*cpair, "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\
                     "-" + UTCDateTime(t1).strftime("%Y") + "_" + str(ixf))
             outfile = h5py.File(outfile, "w")
             cwin = outfile.create_group("corr_windows")

@@ -11,17 +11,19 @@ import matplotlib.pyplot as plt
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
-input_files = glob("/home/lermert/Desktop/CDMX/observations/dvv_measurements/stacks_from_workstation/trials/G.UNM.BHZ--G.UNM.BHN.ccc.stacks_30.0days1995-2021_2.h5")
-input_files = input_files[0:1]
+input_files = glob("UNM_BH_30d_raw_unaligned/G*.h5")
 input_files.sort()
 print(input_files)
 measurement_type = "stretching"
 
-new_fs = 200.0
+new_fs = 160.0
 plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
-twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
-         [[4., 10.]], [[2., 5.]], [[2., 5.]], [[1., 2.5]]]
-freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
+skipfactor = 4  # allow this times more stretching as would be permitted to avoid cycle skipping
+# note: this leads to cycle skipping. However, the alternative leads to saturating dv/v if there is a long term change.
+twins = [[[40., 100.]], [[20., 50.]], [[-40., -16.],[-20., -8.], [8., 20.], [16., 40.]], [[-20., -8.], [-10., -4.], [4., 10.], [8., 20.]],
+         [[-20., -8.], [-10., -4.], [4., 10.], [8., 20.]], [[-10., -4.], [-5., -2.], [4., 10.], [2., 5.]], [[2., 5.]], [[-5., -2.], [-2.5, -1.], [1., 2.5], [2., 5.]]]
+freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8.]]
+
 bootstrap_n = 50
 ngrids = [50, 50, 50, 100, 100, 100, 100, 100]
 ref_duration = 86400. * 365
@@ -98,10 +100,10 @@ for iinf, input_file in enumerate(input_files):
 
                 results["dvv_data_{}".format(i)] = dvv
                 results["dvv_err_{}".format(i)] = best_ccoeff
-                plt.plot(tstmps, dvv, linewidth=0.5)
+               # plt.plot(tstmps, dvv, linewidth=0.5)
 
         if rank == 0:
             results["timestamps"] = dset.dataset[1].timestamps
             np.save("bsref_dvv_{}_{}_{}-{}_{}-{}Hz_{}-{}s_{}.npy".format("stretching", station, ch1, ch2, *freq_band, *twin, maxdvv), results)
 
-            plt.show()
+            # plt.show()

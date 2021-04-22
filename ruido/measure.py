@@ -9,23 +9,28 @@ from mpi4py import MPI
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
-input_files = glob("stacks_from_workstation/*.h5")
+input_files = glob("UNM_BH_30d_raw_unaligned/G*.h5")
 input_files.sort()
 
 measurement_type = "stretching"
 
-new_fs = 100.0
+new_fs = 160.0
+ngrid = 50
+ngrid = int(ngrid)
 plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
-twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
-         [[4., 10.]], [[2., 5.]], [[2., 5.]], [[1., 2.5]]]
-freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [0.75, 1.5], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
-badtimes = [[UTCDateTime("1998,180").timestamp, UTCDateTime("2000,001").timestamp],
-            [UTCDateTime("2001,001").timestamp, UTCDateTime("2003,001").timestamp]]
 skipfactor = 4  # allow this times more stretching as would be permitted to avoid cycle skipping
 # note: this leads to cycle skipping. However, the alternative leads to saturating dv/v if there is a long term change.
+twins = [[[40., 100.]], [[20., 50.]], [[-40., -16.],[-20., -8.], [8., 20.], [16., 40.]], [[-20., -8.], [-10., -4.], [4., 10.], [8., 20.]],
+         [[-20., -8.], [-10., -4.], [4., 10.], [8., 20.]], [[-10., -4.], [-5., -2.], [4., 10.], [2., 5.]], [[2., 5.]], [[-5., -2.], [-2.5, -1.], [1., 2.5], [2., 5.]]]
+badtimes = [[UTCDateTime("1998,180").timestamp, UTCDateTime("2000,001").timestamp], [UTCDateTime("2001,090").timestamp, UTCDateTime("2002,350").timestamp]]
+freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8.]]
 
 for iinf, input_file in enumerate(input_files):
     ixf = int(os.path.splitext(input_file)[0].split("_")[-1])
+    if ixf < 2:
+        continue
+    if ixf >=3:
+        ngrid=100
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])
@@ -43,6 +48,7 @@ for iinf, input_file in enumerate(input_files):
 
     for twin in twins[ixf]:
         maxdvv = skipfactor * 1. / (2. * freq_band[1] * max(abs(np.array(twin))))
+        print("maxdvv ", maxdvv)
         
         # copy
         if rank == 0:
