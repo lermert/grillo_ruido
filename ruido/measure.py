@@ -21,10 +21,11 @@ twins = [[[40., 100.]], [[20., 50.]], [[8., 20.]], [[4., 10.]],
 freq_bands = [[0.1, 0.2], [0.2, 0.5], [0.5, 1.], [0.75, 1.5], [1., 2.], [1.25, 1.75], [2., 4.], [2.5, 3.5], [4., 8]]
 badtimes = [[UTCDateTime("1998,180").timestamp, UTCDateTime("2000,001").timestamp],
             [UTCDateTime("2001,001").timestamp, UTCDateTime("2003,001").timestamp]]
-
+skipfactor = 4  # allow this times more stretching as would be permitted to avoid cycle skipping
+# note: this leads to cycle skipping. However, the alternative leads to saturating dv/v if there is a long term change.
 
 for iinf, input_file in enumerate(input_files):
-    ixf = iinf % len(freq_bands)
+    ixf = int(os.path.splitext(input_file)[0].split("_")[-1])
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])
@@ -41,7 +42,7 @@ for iinf, input_file in enumerate(input_files):
         print(dset.dataset[0].data.max())
 
     for twin in twins[ixf]:
-        maxdvv = min(0.05, 1. / (2. * freq_band[1] * max(abs(np.array(twin)))))
+        maxdvv = skipfactor * 1. / (2. * freq_band[1] * max(abs(np.array(twin))))
         
         # copy
         if rank == 0:
@@ -76,12 +77,11 @@ for iinf, input_file in enumerate(input_files):
             good_windows = [ixwin for ixwin in range(len(tstmps)) if not ixwin in bad_ixs]
             data = dset.dataset[1].data[good_windows]
             tstmps = dset.dataset[1].timestamps[good_windows]
-
-            n = len(dset.dataset[1].timestamps)
+            dset.dataset[2] = CCData(data, tstmps, dset.dataset[1].fs)
+            n = len(dset.dataset[2].timestamps)
             k = int(n * (n - 1) / 2.)
             data_dvv = np.zeros(k)
             data_dvv_err = np.zeros(k)
-            dset.dataset[2] = CCData(data, tstmps, dset.dataset[1].fs)
                 #for ixbad in range(ixbw1, ixbw2):
                 #
                 #    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
