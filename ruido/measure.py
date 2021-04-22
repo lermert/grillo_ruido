@@ -81,6 +81,7 @@ for iinf, input_file in enumerate(input_files):
             k = int(n * (n - 1) / 2.)
             data_dvv = np.zeros(k)
             data_dvv_err = np.zeros(k)
+            dset.dataset[2] = CCData(data, tstmps, dset.dataset[1].fs)
                 #for ixbad in range(ixbw1, ixbw2):
                 #
                 #    frac = (ixbw2 - ixbad) / (ixbw2 - ixbw1)
@@ -92,14 +93,14 @@ for iinf, input_file in enumerate(input_files):
         for i in range(n):
             # i-th stack as reference
             if rank == 0:
-                ref = dset.dataset[1].data[i, :]
+                ref = dset.dataset[2].data[i, :]
             else:
                 ref = None
             ref = comm.bcast(ref, root=0)
             dvv, dvv_timest, ccoeff, \
                 best_ccoeff, dvv_error, cwtfreqs = dset.measure_dvv_par(f0=freq_band[0], f1=freq_band[1], ref=ref,
                                                                         ngrid=100, method="stretching",
-                                                                        dvv_bound=maxdvv, stacklevel=1)
+                                                                        dvv_bound=maxdvv, stacklevel=2)
             if rank == 0:
                 for j in range(i + 1, n):
                     data_dvv[counter] = dvv[j]
