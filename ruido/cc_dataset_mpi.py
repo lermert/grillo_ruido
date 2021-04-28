@@ -4,7 +4,7 @@ from obspy import Trace, UTCDateTime
 from obspy.signal.invsim import cosine_taper
 import matplotlib.pyplot as plt
 from scipy.signal import sosfilt, sosfiltfilt, hann, tukey
-from scipy.fftpack import next_fast_len
+from scipy.fftpack import next_fast_len, fftconvolve
 from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
@@ -97,6 +97,37 @@ class CCData(object):
            
         self.rms = rms
 
+    def align(self, t1, t2, ref, plot=False):
+        l0 = np.where(self.lag == t1)[0]
+        l1 = np.where(self.lag == t2)[0]
+        try:
+            l0 = l0[0]
+            l1 = l1[0]
+        except IndexError:
+            raise ValueError("The chosen min. and max. lag are not multiples of the sampling rate.")
+        
+        taper = np.ones(self.lag.shape)
+        taper[0: l0] = 0
+        taper[l1:] = 0
+        taper[l0: l1] = tukey(l1-l0)
+        opt_shifts = np.zeros(self.timestamps.shape)
+        for i in range(len(opt_shifts)):
+            test = self.data[i] * taper
+            ix0 = len(ref) // 2
+            ix1 = len(ref) // 2 + len(ref)
+            cc = fftconvolve(test[::-1] / test.max(), ref / ref.max(), "full")
+            cc = cc[ix0: ix1]
+            shift = int(self.lag[np.argmax(cc)] * self.fs)
+            
+            # apply the shift
+            if shift == 0:
+                pass
+            elif shift > 0:
+                self.data[i, shift: ] = self.data[i, : -shift].copy()
+                self.data[i, 0: shift] = 0
+            else:
+                self.data[i, :shift ] = self.data[i, -shift:].copy()
+                self.data[i, shift:] = 0
 
 
 class CCDataset(object):

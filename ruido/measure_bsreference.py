@@ -15,6 +15,7 @@ input_files = glob("UNM_BH_30d_raw_unaligned/G*.h5")
 input_files.sort()
 print(input_files)
 measurement_type = "stretching"
+align_mainlobe = True
 
 new_fs = 160.0
 plot_tmax = [100.0, 60.0, 40.0, 20.0, 20.0, 10.0, 10.0, 5.0]
@@ -40,17 +41,22 @@ for iinf, input_file in enumerate(input_files):
 
     if rank == 0:    
         dset.interpolate_stacks(stacklevel=0, new_fs=new_fs)
+
         plot_output = re.sub("\.h5", "_nonnorm.png", os.path.basename(input_file))
         dset.plot_stacks(stacklevel=0, label_style="year",
                        seconds_to_show=plot_tmax[ixf], outfile=plot_output)
         print(dset.dataset[0].data.max())
 
     for twin in twins[ixf]:
-        maxdvv = 1. / (2. * freq_band[1] * max(abs(np.array(twin))))
+        maxdvv = skipfactor / (2. * freq_band[1] * max(abs(np.array(twin))))
         print(maxdvv)
         # copy
         if rank == 0:
             dset.dataset[1] = CCData(dset.dataset[0].data.copy(), dset.dataset[0].timestamps.copy(), dset.dataset[0].fs)
+
+            if align_mainlobe:
+                dset.dataset[1].align(-1./ (2. * freq_band[0]), 1. / (2. * freq_band[1]),
+                                      ref=dset.dataset[1].data[dset.dataset[1].ntraces // 2, :])
         # collect measured dvv and metadata in dictionary to save
         results = {}
         results["dvv_max"] = maxdvv
