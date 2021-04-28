@@ -3,8 +3,8 @@ import h5py
 from obspy import Trace, UTCDateTime
 from obspy.signal.invsim import cosine_taper
 import matplotlib.pyplot as plt
-from scipy.signal import sosfilt, sosfiltfilt, hann, tukey
-from scipy.fftpack import next_fast_len, fftconvolve
+from scipy.signal import sosfilt, sosfiltfilt, hann, tukey, fftconvolve
+from scipy.fftpack import next_fast_len
 from scipy.interpolate import interp1d
 from ruido.utils import filter
 import pandas as pd
@@ -98,13 +98,8 @@ class CCData(object):
         self.rms = rms
 
     def align(self, t1, t2, ref, plot=False):
-        l0 = np.where(self.lag == t1)[0]
-        l1 = np.where(self.lag == t2)[0]
-        try:
-            l0 = l0[0]
-            l1 = l1[0]
-        except IndexError:
-            raise ValueError("The chosen min. and max. lag are not multiples of the sampling rate.")
+        l0 = np.argmin((self.lag - t1) ** 2)
+        l1 = np.argmin((self.lag - t2) ** 2)
         
         taper = np.ones(self.lag.shape)
         taper[0: l0] = 0
