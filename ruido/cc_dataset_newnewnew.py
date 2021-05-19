@@ -115,15 +115,21 @@ class CCData(object):
         else:  # keep all if negative keep_duration
             ixs_t_keep = np.arange(len(self.timestamps))
 
-        data = [d for d in self.data[ixs_t_keep]]
-        timestamps = [t for t in self.timestamps[ixs_t_keep]]
-
+        #data = [d for d in self.data[ixs_t_keep]]
+        #timestamps = [t for t in self.timestamps[ixs_t_keep]]
+        print("keeping {} traces".format(len(ixs_t_keep)))
+        data_kept = self.data[ixs_t_keep].copy()
+        timestamps_kept = self.timestamps[ixs_t_keep].copy()
+        print("copied")
+        self.data = None
+        self.timestamps = None
         # overwrite data by new and old[from index onwards] data together
-        data.extend(new_data)
-        self.data = np.array(data)
+        # data.extend(new_data)
+        self.data = np.concatenate((data_kept, new_data), axis=0)#np.array(data)
         # overwrite timestamps by new and old[from index onwards] data together
-        timestamps.extend(new_timestamps)
-        self.timestamps = np.array(timestamps)
+        #timestamps.extend(new_timestamps)
+        self.timestamps = np.concatenate((timestamps_kept, new_timestamps))#np.array(timestamps)
+        print("concatenated.")
         # overwrite ntraces by new and old[from index onwards] data together
         self.ntraces = len(self.timestamps)
         self.rms = self.add_rms()
@@ -409,6 +415,7 @@ class CCDataset(object):
             self.dataset[0].extend(data, timestamps, fs, keep_duration=keep_duration)
         else:
             self.dataset[0] = CCData(data, timestamps, fs)
+            print(self)
 
 
 
