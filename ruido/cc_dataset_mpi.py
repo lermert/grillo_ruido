@@ -765,10 +765,14 @@ class CCDataset(object):
         else:
             pass
 
+        comm.barrier()
+
         if rank == 0:
             return(dvv_all, timestamps, ccoeff_all, best_ccoeff_all, dvv_error_all, [])
         else:
             return([],[],[],[],[],[])
+
+
     def interpolate_stacks(self, new_fs, stacklevel=1):
         if rank != 0:
             raise ValueError("Call this function only on one process")
@@ -1013,3 +1017,58 @@ class CCDataset(object):
                 plt.show()
         else:
             return(ax1, t_to_plot)
+
+    def measure_dvv(self, ref, f0, f1, stacklevel=1, method="stretching",
+                    ngrid=90, dvv_bound=0.03,
+                    measure_smoothed=False, indices=None,
+                    moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
+                    len_dtw_msr=None):
+
+        if rank == 0:
+            cwtfreqs = None
+            to_measure = self.dataset[stacklevel].data
+            lag = self.dataset[stacklevel].lag
+            timestamps = self.dataset[stacklevel].timestamps
+            # print(timestamps)
+            fs = self.dataset[stacklevel].fs
+
+            if len(to_measure) == 0:
+                return()
+
+            reference = ref.copy()
+            para = {}
+            para["dt"] = 1. / fs
+            para["twin"] = [lag[0], lag[-1] + 1. / fs]
+            para["freq"] = [f0, f1]
+
+            if indices is None:
+                indices = range(len(to_measure))
+
+            dvv_times = np.zeros(len(indices))
+            ccoeff = np.zeros((len(indices), 1))
+            best_ccoeff = np.zeros((len(indices), 1))
+
+            dvv = np.zeros((len(indices), 1))
+            dvv_error = np.zeros((len(indices), 1)) 
+
+            cnt = 0
+            for i, tr in enumerate(to_measure):
+                if i not in indices:
+                    continue
+
+                if method == "stretching":
+                    dvvp, delta_dvvp, coeffp, cdpp = stretching_vect(reference, tr,
+                                                            dvv_bound, ngrid, para)
+                    cwtfreqs = []
+                else:
+                    raise NotImplementedError("I have only stretching here.")
+                dvv[cnt, :] = dvvp
+                dvv_times[cnt] = timestamps[i]
+                ccoeff[cnt, :] = cdpp
+                # print(ccoeff[cnt])
+                best_ccoeff[cnt, :] = coeffp
+                dvv_error[cnt, :] = delta_dvvp
+                cnt += 1
+            return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
+        else:
+            return([],[],[],[],[], [])

@@ -1,0 +1,115 @@
+# input file path (allows wildcards, will loop over files found)
+input_files: /absolute/example/path/*.h5
+# measurement type: "stretching"
+measurement_type: stretching
+# reference type: "bootstrap" or "list" or "inversion" or "increment"
+reference_type: bootstrap
+# reference_length_days: only relevant for bootstrap
+reference_length_days: 365
+# how many samples for bootstrapping
+# (will be ignored for all other reference_type)
+bootstrap_samples: 50
+# specified reference windows: only relevant for "list"
+# specify a minimum of one pair (start end) in the format YYYY,jjj
+reference_list:
+-   - 1995,001
+    - 1996,001
+-   - 2000,001
+    - 2001,001
+# new_fs: if it is larger than current sampling rate of data,
+# then the data will be interpolated
+new_fs: 160.0
+# window type to select lag window: boxcar or tukey
+window_type: boxcar
+# ngrid for stretching measurement
+ngrid: 50
+# allow this many times more stretching than permitted normally
+# note: any value larger than 1 can lead to cycle skipping.
+# However, not permitting larger values can lead to saturating 
+# dv/v if strong long-term change
+skipfactor: 4
+# "bad times": times that should be replaced by 0 velocity change
+# due to data quality issues.
+# only for reference_type = "brenguier"
+skiptimes_inversion:
+-   - 1998,180
+    - 2000,001
+-   - 2001,090
+    - 2002,350
+# frequency bands that were already used during stacking
+freq_bands:
+-   - 0.1
+    - 0.2
+-   - 0.2
+    - 0.5
+-   - 0.5
+    - 1.0
+-   - 1.0
+    - 2.0
+-   - 1.25
+    - 1.75
+-   - 2.0
+    - 4.0
+-   - 2.5
+    - 3.5
+-   - 4.0
+    - 8.0
+# seconds to plot in each frequency band (starting from 0)
+plot_tmax:
+- 100.0
+- 60.0
+- 40.0
+- 20.0
+- 20.0
+- 10.0
+- 10.0
+- 5.0
+# time windows for each frequency band 
+# (first entries are for first band, etc)
+twins:
+-   -   - 40.0
+        - 100.0
+-   -   - 20.0
+        - 50.0
+-   -   - -40.0
+        - -16.0
+    -   - -20.0
+        - -8.0
+    -   - 8.0
+        - 20.0
+    -   - 16.0
+        - 40.0
+-   -   - -20.0
+        - -8.0
+    -   - -10.0
+        - -4.0
+    -   - 4.0
+        - 10.0
+    -   - 8.0
+        - 20.0
+-   -   - -20.0
+        - -8.0
+    -   - -10.0
+        - -4.0
+    -   - 4.0
+        - 10.0
+    -   - 8.0
+        - 20.0
+-   -   - -10.0
+        - -4.0
+    -   - -5.0
+        - -2.0
+    -   - 4.0
+        - 10.0
+    -   - 2.0
+        - 5.0
+-   -   - 2.0
+        - 5.0
+-   -   - -5.0
+        - -2.0
+    -   - -2.5
+        - -1.0
+    -   - 1.0
+        - 2.5
+    -   - 2.0
+        - 5.0

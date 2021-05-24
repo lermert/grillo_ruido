@@ -345,7 +345,8 @@ class CCDataset(object):
         else:
             self.dataset[0] = CCData(data, timestamps, fs)
 
-    def data_to_memory(self, n_corr_max=None, t_min=None, t_max=None, keep_duration=0,
+    def data_to_memory(self, n_corr_max=None, n_corr_min=None, t_min=None,
+                       t_max=None, keep_duration=0,
                        normalize=False):
         # read data from correlation file into memory and store in dataset[0]
         # use self.datafile
@@ -362,35 +363,48 @@ class CCDataset(object):
         if n_corr_max is None:
             n_corr_max = ntraces
 
+        if n_corr_min is None:
+            n_corr_min = 0
+
         # allocate data
         try:
-            data = np.zeros((n_corr_max, npts))
+            data = np.zeros((n_corr_max - n_corr_min, npts))
         except MemoryError:
             print("Data doesn't fit in memory, set a lower n_corr_max")
             return()
         
         # allocate timestamps array
-        timestamps = np.zeros(n_corr_max)
+        timestamps = np.zeros(n_corr_max - n_corr_min)
         try:  # new file format
             for i in range(len(self.datafile["corr_windows"]["data"])):  # , v in enumerate(self.datafile["corr_windows"]["data"][:]):
+                if i < n_corr_min:
+                    continue
                 if i == n_corr_max:
                     break
                 v = self.datafile["corr_windows"]["data"][i]
-                data[i, :] = v
                 tstamp = self.datafile["corr_windows"]["timestamps"][i]
+                if tstamp == "":
+                    continue
+                data[i - n_corr_min, :] = v
                 tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
-                timestamps[i] = UTCDateTime(tstmp).timestamp
+                timestamps[i - n_corr_min] = UTCDateTime(tstmp).timestamp
                 if t_max is not None and tstmp > t_max:
                     break
         except KeyError:  # old file format
             for i, (k, v) in enumerate(self.datafile["corr_windows"].items()):
+                if i < n_corr_min:
+                    continue
                 if i == n_corr_max:
                     break
-                data[i, :] = v[:]
+                if k == "":
+                    continue
                 tstmp = '{},{},{},{},{}'.format(*k.split('.')[0: 5])
-                timestamps[i] = UTCDateTime(tstmp).timestamp
+                data[i - n_corr_min, :] = v[:]
+                timestamps[i - n_corr_min] = UTCDateTime(tstmp).timestamp
 
 
+        data = data[timestamps != 0.0]
+        timestamps = timestamps[timestamps != 0.0]
         if t_min is not None:
             ix0 = np.argmin(abs(timestamps - t_min))
         else:
@@ -408,14 +422,16 @@ class CCDataset(object):
                 tr /= tr.max()
 
         ntraces = ix1 - ix0
-        print("Read to memory from {} to {}".format(UTCDateTime(timestamps[0]),
-                                                    UTCDateTime(timestamps[-1])))
 
-        if 0 in list(self.dataset.keys()):
-            self.dataset[0].extend(data, timestamps, fs, keep_duration=keep_duration)
-        else:
-            self.dataset[0] = CCData(data, timestamps, fs)
-            print(self)
+        if len(timestamps) > 0:
+            print("Read to memory from {} to {}".format(UTCDateTime(timestamps[0]),
+                                                        UTCDateTime(timestamps[-1])))
+
+            if 0 in list(self.dataset.keys()):
+                self.dataset[0].extend(data, timestamps, fs, keep_duration=keep_duration)
+            else:
+                self.dataset[0] = CCData(data, timestamps, fs)
+                print(self)
 
 
 

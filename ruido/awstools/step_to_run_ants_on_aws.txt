@@ -1,0 +1,42 @@
+- select instance, connect to instance (make sure to enable full_s3_access_from_ec2 IAM role)
+
+- format and mount the SSD storage volumes:
+# list available volumes:
+lsblk
+# find which disks are the SSD we are looking for, normally called nvme1n1 or so
+
+1st disk:
+# make mountpoint directory:
+mkdir procdata
+# format:
+sudo mkfs -t ext4 /dev/nvme1n1
+# mount and add permissions:
+sudo mount /dev/nvme1n1 procdata
+sudo chmod a+rwx procdata
+
+2nd disk:
+# make mountpoint directory:
+mkdir rawdata
+# format:
+sudo mkfs -t ext4 /dev/nvme1n2
+# mount and add permissions:
+sudo mount /dev/nvme1n1 rawdata
+sudo chmod a+rwx rawdata
+
+- copy the processing directory to the storage volume:
+cp -R ccs_ants/ procdata/
+
+- copy the running scripts from s3 into home dir!
+aws s3 cp s3://ruido/run_preprocessing_rsvm.sh .
+aws s3 cp s3://ruido/run_correlations_rsvm.sh .
+
+
+- in the processing script set nproc= to the number of vCPUs of the AWS instance
+- run the processing script:
+bash run_preprocessing_rsvm.sh
+
+- in the correlation script, set nproc= to the number of vCPUs
+- also, uncomment or comment whether processed data need to be redownloaded from s3
+- run the correlation script as:
+bash run_correlations_rsvm.sh
+
