@@ -173,7 +173,7 @@ class CCDataset(object):
         self.dataset[stacklevel].data = np.array(newstacks)
 
 
-    def data_to_memory(self, n_corr_max=None, keep_duration=0,
+    def data_to_memory(self, n_corr_max=None, n_corr_min=None, keep_duration=0,
                        normalize=False):
         # read data from correlation file into memory and store in dataset[0]
         # use self.datafile
@@ -188,17 +188,21 @@ class CCDataset(object):
 
         if n_corr_max is None:
             n_corr_max = ntraces
+        if n_corr_min is None:
+            n_corr_min = 0
 
-        nshare = n_corr_max // size
-        rest = n_corr_max % size
+        n_to_read = n_corr_max - n_corr_min
+
+        nshare = n_to_read // size
+        rest = n_to_read % size
 
         # allocate data
         if rank == 0:
             try:
-                alldata = np.zeros((n_corr_max, npts))
-                alldatashare = np.zeros((n_corr_max - rest, npts))
-                alltimestamps = np.zeros(n_corr_max)
-                alltimestampsshare = np.zeros(n_corr_max - rest)
+                alldata = np.zeros((n_to_read, npts))
+                alldatashare = np.zeros((n_to_read - rest, npts))
+                alltimestamps = np.zeros(n_to_read)
+                alltimestampsshare = np.zeros(n_to_read - rest)
             except MemoryError:
                 raise MemoryError("Data doesn't fit in memory, set a lower n_corr_max")
         else:
@@ -207,13 +211,16 @@ class CCDataset(object):
             alltimestampsshare = None
 
         partdata = np.zeros((nshare, npts))
-        partdata[:, :] = self.datafile["corr_windows"]["data"][rank * nshare: rank * nshare + nshare, :]
+        partdata[:, :] = self.datafile["corr_windows"]["data"][rank * nshare + n_corr_min: 
+                                                               rank * nshare + n_corr_min + nshare, :]
 
         # allocate timestamps array
         timestamps = np.zeros(nshare)
 
         for i in range(nshare):
-            tstamp = self.datafile["corr_windows"]["timestamps"][rank * nshare + i]
+            tstamp = self.datafile["corr_windows"]["timestamps"][rank * nshare + n_corr_min + i]
+            if tstamp == "":
+                continue
             tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
             timestamps[i] = UTCDateTime(tstmp).timestamp
 
@@ -266,7 +273,7 @@ class CCDataset(object):
         return(ixs[ixs_keep])
 
 
-    def group_for_stacking(self, t0, duration, stacklevel=0, kmeans_label=None, bootstrap=0):
+    def group_for_stacking(self, t0, duration, stacklevel=0, cluster_label=None, bootstrap=0):
         """
         Create a list of time stamps to be stacked
         --> figure out what "belongs together" in terms of time window
@@ -289,11 +296,11 @@ class CCDataset(object):
                                       # np.where(longer_zero))
 
         # check if selection to do for clusters
-        if kmeans_label is not None:
-            k_to_select = self.dataset[stacklevel].kmeans_labels
+        if cluster_label is not None:
+            k_to_select = self.dataset[stacklevel].cluster_labels
             if k_to_select is None:
                 raise ValueError("Selection by cluster labels not possible: No labels assigned.")
-            ixs_selected = np.intersect1d(ixs_selected, np.where(k_to_select == kmeans_label))
+            ixs_selected = np.intersect1d(ixs_selected, np.where(k_to_select == cluster_label))
 
         if bootstrap > 0:
             ixs_out = []
@@ -305,7 +312,8 @@ class CCDataset(object):
         return(ixs_out)
 
     def select_for_stacking(self, ixs, selection_mode, stacklevel=0, bootstrap=False, cc=0.5,
-                            twin=None, ref=None, dist=None, distquant=None, nr_bootstrap=1, **kwargs):
+                            twin=None, ref=None, dist=None, distquant=None,
+                            nr_bootstrap=1, **kwargs):
         """
         Select by: closeness to reference or percentile or...
         Right now this only applies to raw correlations, not to stacks
@@ -855,7 +863,7 @@ class CCDataset(object):
     def plot_stacks(self, stacklevel=1, outfile=None, seconds_to_show=20, scale_factor_plotting=0.1,
         plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, mask_gaps=False, step=None, figsize=None,
         color_by_cc=False, normalize_all=False, label_style="month", ax=None, plot_envelope=False, ref=None,
-        mark_17_quake=False):
+        mark_17_quake=False, grid=True, marklags=[]):
         if rank != 0:
             raise ValueError("Call this function only on one process")
         if mask_gaps and step == None:
@@ -864,6 +872,8 @@ class CCDataset(object):
         to_plot = self.dataset[stacklevel].data
         t_to_plot = self.dataset[stacklevel].timestamps
         lag = self.dataset[stacklevel].lag
+        if plot_mode == "heatmap":
+            lag += 0.5 * 1. / self.dataset[stacklevel].fs
 
         if to_plot.shape[0] == 0:
             return()
@@ -996,7 +1006,11 @@ class CCDataset(object):
         ax1.set_yticklabels(ylabelticks)
         ax1.yaxis.tick_right()
 
-        ax1.grid(linestyle=":", color="lawngreen", axis="x")
+        for marklag in marklags:
+            plt.plot([marklag, marklag], [t_to_plot.min(), t_to_plot.max()], "--", color="b")
+
+        if grid:
+            ax1.grid(linestyle=":", color="lawngreen", axis="x")
         if seconds_to_show - seconds_to_start > 50:
             tickstep = 10.0
         elif seconds_to_show - seconds_to_start > 20:

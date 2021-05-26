@@ -15,26 +15,33 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
 
-dirs = ["/media/lermert/Bienenstich/data_CDMX/correlations/UNM_seis_ccc/*_raw/"]
-channels = ["BHZ", "BHN", "BHE", "HHE", "HHN", "HHZ"]
-stations = ["UNM", "MULU", "MIXC", "TEPE", "ESTA", "CIRE",
-            "AOVM", "APVM", "BJVM", "CJVM", "MCVM", "MHVM", "PBVM",
-            "COVM", "CTVM", "GMVM", "ICVM", "MPVM", "MZVM", "PTVM",
-            "VRVM", "THVM", "TLVM", "XCVM"]
+dirs = ["TO_ccc/TO_*_ccc/", "RSVM/rsvm_*/", "UNM_seis_ccc/*_raw/"]
+channels = ["HLE", "HLN", "HLZ", "BHZ", "BHN", "BHE", "HHE", "HHN", "HHZ"]
+stations = ["UNM", "AOVM", "APVM", "BJVM",
+            "MCVM", "MHVM", "PBVM",
+            "CJVM", "COVM", "CTVM", "GMVM",
+            "ICVM", "MPVM", "MZVM", "PTVM",
+            "VRVM", "THVM", "TLVM", "XCVM",
+            "CIRE", "ESTA", "MULU", "TEPE", "MIXC"]
 corrT = 1200.
-duration = 10 * 86400.
-step = 10 * 86400.
+duration = 5 * 86400.
+step = 5 * 86400.
 minimum_stack_len = 1
 t0 = UTCDateTime("1995,01,01").timestamp
 t1 = UTCDateTime("2021,02,01").timestamp
 event_dates = [UTCDateTime("2008,184").timestamp, UTCDateTime("2013,046").timestamp, UTCDateTime("2017,251").timestamp,
                UTCDateTime("2017,262").timestamp, UTCDateTime("2020,090").timestamp]
+plot_type = "spectrogram"  # spectrogram or periodogram
 cmap = cm.bilbao
 stackmode = "linear"   # linear, median, robust
 fmin = 0.05
 fmax = 10.0
+Tmin = 0.1
+Tmax = 12.0
 vmaxs = {"BH": -95, "HH": -75, "HL": -75, "HN":-90}
 vmins = {"BH": -130, "HH": -125, "HL": -125, "HN":-125}
+datesplot0 = {"BH": "1995,001", "HH": "2005,170", "HL": "2017,100" }
+datesplot1 = {"BH": "2021,001", "HH": "2007,170", "HL": "2021,001" }
 do_stacking = True
 
 
@@ -48,11 +55,9 @@ def add_stacks(dset):
         print(UTCDateTime(t_running).strftime("%Y/%m/%d"), end=",")
         stimes = dset.group_for_stacking(t_running, duration=duration)
 
-        if stimes == []:
-            # print(t_running, "no windows:)
-            t_running += step
-            continue
-        if len(stimes) < minimum_stack_len:
+        if stimes == [] or len(stimes) < minimum_stack_len:
+            dset.dataset[1].extend(new_data=np.zeros((1, dset.dataset[1].npts)), new_timestamps=[t_running],
+                                   new_fs=dset.dataset[1].fs, keep_duration=-1)
             t_running += step
             continue
 
@@ -71,6 +76,8 @@ for indir in dirs:
             input_files.sort()
             vmin = vmins[cha[0:2]]
             vmax = vmaxs[cha[0:2]]
+            dateplot0 = UTCDateTime(datesplot0[cha[0:2]]).timestamp
+            dateplot1 = UTCDateTime(datesplot1[cha[0:2]]).timestamp
 
             # read in the data, one file at a time, adding stacks as we go along
             if do_stacking:
@@ -119,53 +126,94 @@ for indir in dirs:
                 cwin.create_dataset("data", data=dset.dataset[1].data)
 
                 dtp = h5py.string_dtype()
-                cwin.create_dataset("timestamps", shape=dset.dataset[1].timestamps.shape, dtype=dtp)
+                cwin.create_dataset("timestamps",
+                                    shape=dset.dataset[1].timestamps.shape,
+                                    dtype=dtp)
                 for ixttsp, tstmp in enumerate(dset.dataset[1].timestamps):
-                    cwin["timestamps"][ixttsp] = UTCDateTime(tstmp).strftime("%Y.%j.%H.%M.%S")
+                    cwin["timestamps"][ixttsp] = \
+                        UTCDateTime(tstmp).strftime("%Y.%j.%H.%M.%S")
                 outfile.flush()
                 outfile.close()
 
-
             print(dset.dataset[1].fs)
             taper = cosine_taper(npts=dset.dataset[1].npts, p=0.1)
-            # once all the stacks, take the spectra
-            #if rank == 0:
-            freq = np.fft.rfftfreq(dset.dataset[1].data.shape[-1] * 4, d=1./dset.dataset[1].fs)
-            ix0 = np.argmin((freq - fmin)**2)
-            ix1 = np.argmin((freq - fmax * 1.1)**2)
+            freq = np.fft.rfftfreq(dset.dataset[1].data.shape[-1] * 4,
+                                   d=1./dset.dataset[1].fs)
+            freq[0] = freq[1]
+
+            if plot_type == "spectrogram":
+                ix0 = np.argmin((freq - fmin)**2)
+                ix1 = np.argmin((freq - fmax * 1.1)**2)
+            elif plot_type == "periodogram":
+                period = 1. / freq
+                ix0p = np.argmin((freq - 1. / Tmax) ** 2)
+                ix1p = np.argmin((freq - 1. / Tmin) ** 2)
+            else:
+                raise ValueError("Unknown plot_type {}".format(plot_type))
+
             specgram = np.zeros((dset.dataset[1].data.shape[0], freq.shape[0]))
+            if plot_type == "periodogram":
+                specgramplot = np.zeros((dset.dataset[1].data.shape[0],
+                                         ix1p - ix0p))
+
             for i in range(dset.dataset[1].data.shape[0]):
-
-                specgram[i, :] = np.abs(np.fft.rfft(taper * dset.dataset[1].data[i, :], n=dset.dataset[1].data.shape[-1] * 4))
-                # uncomment the line below if data was in velocity
-                # specgram[i, :] *= (2. * np.pi * freq) ** 2
-                freq[0] = freq[1]
-                if i % 3 == 0:
-                    plt.loglog(freq, specgram[i, :], color="0.5", alpha=0.1, linewidth=0.5)  # color=str(i/len(dset.dataset[1].timestamps)),
-            plt.ylim(vmin, vmax)
-            plt.grid()
-            plt.savefig("spectraldensity.png")
-
+                specgram[i, :] = np.abs(np.fft.rfft(taper *
+                                        dset.dataset[1].data[i, :],
+                                        n=dset.dataset[1].data.shape[-1] * 4))
+                if plot_type == "periodogram":
+                    specgramplot[i, :] = specgram[i, ix0p: ix1p].copy()
+                    specgramplot[i, :] = specgramplot[i, ::-1]
 
             fig = plt.figure(figsize=(8, 4.5))
-            x, y = np.meshgrid(np.arange(dset.dataset[1].timestamps.shape[0]), freq[ix0: ix1])
-            plt.pcolor(x, y, 10 * np.log10(specgram[:, ix0: ix1].T), cmap=cmap,
-                      vmin=vmin, vmax=vmax)
+
+            if plot_type == "periodogram":
+                xplot = period[ix0p: ix1p].copy()
+                xplot = xplot[::-1]
+            else:
+                xplot = freq[ix0: ix1]
+            x, y = np.meshgrid(dset.dataset[1].timestamps, xplot)
+
+            if plot_type == "periodogram":
+                plt.pcolor(x, y, 10 * np.log10(specgramplot).T, cmap=cmap,
+                           vmin=vmin, vmax=vmax)
+            elif plot_type == "spectrogram":
+                plt.pcolor(x, y, 10 * np.log10(specgram[:, ix0: ix1].T),
+                           cmap=cmap, vmin=vmin, vmax=vmax)
             plt.colorbar(label="dB (to 1 m\u00B2 s\u207B\u2074 Hz\u207B\u00B9)")
 
             for ev in event_dates:
-                ixtev = np.argmin((dset.dataset[1].timestamps - 0.5*duration - ev) ** 2)
-                plt.scatter([ixtev], [9], color="lightblue", marker="v")
+                ixtev = np.argmin((dset.dataset[1].timestamps - 0.5 * duration - ev) ** 2)
+                if plot_type == "periodogram":
+                    plt.scatter(dset.dataset[1].timestamps[ixtev], [0.9 * Tmax],
+                                color="k", marker="v")
+                else:
+                    plt.scatter(dset.dataset[1].timestamps[ixtev], [0.9 * fmax],
+                                color="k", marker="v")
 
             years = []
+            yearsyears = []
             xticks = []
             for ixt, tt in enumerate(dset.dataset[1].timestamps):
-                if UTCDateTime(tt).strftime("%Y") not in years:
-                    years.append(UTCDateTime(tt).strftime("%Y"))
-                    xticks.append(ixt)
-            #plt.yticks(np.arange(10), [str(hz) for hz in range(10)])
-            plt.ylim(fmin, fmax)
+                if UTCDateTime(tt).strftime("%Y") not in yearsyears:
+                    if tt < dateplot0:
+                        years.append(UTCDateTime(dateplot0).strftime("%Y/%m"))
+                    elif tt > dateplot1:
+                        years.append(UTCDateTime(dateplot1).strftime("%Y/%m"))
+                    else:
+                        years.append(UTCDateTime(tt).strftime("%Y/%m"))
+                    yearsyears.append(UTCDateTime(tt).strftime("%Y"))
+                    xticks.append(tt)
+
+            if plot_type == "periodogram":
+                plt.ylim(Tmin, Tmax*0.9)
+                plt.ylabel("Period (s)")
+                outfile = "periodogram_{}_{}_{}-{}s.png".format(sta, cha, Tmin, Tmax)
+
+            else:
+                plt.ylim(fmin, fmax*0.9)
+                plt.ylabel("Frequency (Hz)")
+                outfile = "spectrogram_{}_{}_{}-{}Hz.png".format(sta, cha, fmin, fmax)
+            plt.xlim(dateplot0, dateplot1)
             plt.xticks(xticks, years, rotation=30)
-            plt.ylabel("Frequency (Hz)")
             plt.tight_layout()
-            plt.savefig("spectrogram_{}_{}_{}-{}Hz.png".format(sta, cha, fmin, fmax), dpi=300)
+            plt.savefig(outfile, dpi=300)

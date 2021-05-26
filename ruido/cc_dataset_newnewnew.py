@@ -1133,15 +1133,17 @@ class CCDataset(object):
     def plot_stacks(self, stacklevel=1, outfile=None, seconds_to_show=20, scale_factor_plotting=0.1,
         plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, mask_gaps=False, step=None, figsize=None,
         color_by_cc=False, normalize_all=False, label_style="month", ax=None, plot_envelope=False, ref=None,
-        mark_17_quake=False):
+        mark_17_quake=False, marklags=[], grid=True):
 
         if mask_gaps and step == None:
             raise ValueError("To mask the gaps, you must provide the step between successive windows.")
 
         to_plot = self.dataset[stacklevel].data
         t_to_plot = self.dataset[stacklevel].timestamps
-        lag = self.dataset[stacklevel].lag
-
+        if plot_mode == "heatmap":
+            lag = self.dataset[stacklevel].lag + 0.5 * 1. / self.dataset[stacklevel].fs
+        else:
+            lag = self.dataset[stacklevel].lag
         if to_plot.shape[0] == 0:
             return()
         ylabels = []
@@ -1265,6 +1267,9 @@ class CCDataset(object):
             ylabels.append(UTCDateTime("2017,262").timestamp)
             ylabelticks.append("EQ Puebla")
 
+        for marklag in marklags:
+            plt.plot([marklag, marklag], [t_to_plot.min(), t_to_plot.max()], "--", color="b")
+
         ax1.set_title(self.station_pair)
         ax1.set_ylabel("Normalized stacks (-)")
         ax1.set_xlim([seconds_to_start, seconds_to_show])
@@ -1273,7 +1278,8 @@ class CCDataset(object):
         ax1.set_yticklabels(ylabelticks)
         ax1.yaxis.tick_right()
 
-        ax1.grid(linestyle=":", color="lawngreen", axis="x")
+        if grid:
+            ax1.grid(linestyle=":", color="lawngreen", axis="x")
         if seconds_to_show - seconds_to_start > 50:
             tickstep = 10.0
         elif seconds_to_show - seconds_to_start > 20:
