@@ -28,7 +28,8 @@ new_fs = config["new_fs"]
 conf["ngrid"] = int(config["ngrid"])
 plot_tmax = config["plot_tmax"]
 window_type = config["window_type"]
-skipfactor = 4
+skipfactor = config["skipfactor"]
+do_plots = config["plotting"]
 # frequency bands
 freq_bands = config["freq_bands"]
 # time windows associated with each frequency band
@@ -58,15 +59,17 @@ input_files.sort()
 # For each time window:
 # measurement
 # save the result
+# set up the dataframe to collect the results
+output = pd.DataFrame(columns=["timestamps", "t0_s", "t1_s", "f0_Hz",  "f1_Hz",
+                               "tag", "dvv_max", "dvv", "cc_before", "cc_after",
+                               "dvv_err"])
 
 for iinf, input_file in enumerate(input_files):
     ixf = int(os.path.splitext(input_file)[0].split("_")[-1])
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])
-
     freq_band = freq_bands[ixf]
-    ixf = int(os.path.basename(input_file).split(".")[-2][-1])
 
     # read into memory
     dset = CCDataset(input_file)
@@ -76,23 +79,21 @@ for iinf, input_file in enumerate(input_files):
     if rank == 0:
         if dset.dataset[0].fs != new_fs:
             dset.interpolate_stacks(stacklevel=0, new_fs=new_fs)
-        plot_output = re.sub("\.h5", "_{}.png".format(ixf),
-                             os.path.basename(input_file))
-        dset.plot_stacks(stacklevel=0, label_style="year",
-                       seconds_to_show=plot_tmax[ixf], outfile=plot_output)
-        print(dset.dataset[0].data.max())
 
-    # set up the dataframe to collect the results
-    output = pd.DataFrame(columns=["timestamps", "t0_s", "t1_s", "f0_Hz",  "f1_Hz",
-                                   "tag", "dvv_max", "dvv", "cc_before", "cc_after",
-                                   "dvv_err"])
+        if do_plots:
+            plot_output = re.sub("\.h5", "_{}.png".format(ixf),
+                                 os.path.basename(input_file))
+            dset.plot_stacks(stacklevel=0, label_style="year",
+                             seconds_to_show=plot_tmax[ixf],
+                             outfile=plot_output)
+
     # find max. dvv that will just be short of a cycle skip
     # then extend by skipfactor
     for twin in twins[ixf]:
-        maxdvv = skipfactor * 1. / (2. * freq_band[1] *\
-            max(abs(np.array(twin))))
+        maxdvv = skipfactor * 1. / (2. * freq_band[1] *
+                                    max(abs(np.array(twin))))
         conf["maxdvv"] = maxdvv
-        # print("maxdvv ", maxdvv)
+
         # window
         t_mid = (twin[0] + twin[1]) / 2.
         hw = (twin[1] - twin[0]) / 2.
@@ -100,17 +101,19 @@ for iinf, input_file in enumerate(input_files):
             dset.dataset[1] = CCData(dset.dataset[0].data.copy(),
                                      dset.dataset[0].timestamps.copy(),
                                      dset.dataset[0].fs)
-            dset.window_data(t_mid=t_mid, hw=hw, window_type=window_type, stacklevel=1)
+            dset.window_data(t_mid=t_mid, hw=hw, window_type=window_type,
+                             stacklevel=1)
         else:
             pass
 
         print(dset)
 
         output_table = run_measurement(dset, conf, twin, freq_band, rank, comm)
-        
         output = pd.concat([output, output_table], ignore_index=True)
 
-comm.barrier()
+        comm.barrier()
+        del dset.dataset[1]
+
 # at the end write all to file
 if rank == 0:
     outfile_name = "{}_{}{}_{}_{}.csv".format(station, ch1, ch2, conf["mtype"],

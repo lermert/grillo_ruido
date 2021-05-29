@@ -55,6 +55,7 @@ freq_bands:
 -   - 4.0
     - 8.0
 # seconds to plot in each frequency band (starting from 0)
+plotting: false
 plot_tmax:
 - 100.0
 - 60.0

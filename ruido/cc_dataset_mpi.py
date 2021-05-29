@@ -20,7 +20,10 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
-
+def lose_zero_rows_fromarray(array, axis=-1):
+    ixs_nonzero =  np.where(np.sum(array, axis=axis) != 0.0)[0]
+    array_new = array[ixs_nonzero].copy()
+    
 class CCData(object):
     """
     Class for keeping cross-correlation data and stacks of cross-correlation data
@@ -42,19 +45,19 @@ class CCData(object):
         self.add_rms()
         self.median = np.nanmedian(self.data, axis=0)
 
-    def lose_allzero_windows(self):
-        ixs_nonzero = np.where(np.sum(self.data, axis=-1) != 0.0)[0]
-        datanew = self.data[ixs_nonzero]
-        tnew = self.timestamps[ixs_nonzero]
-        if rank == 0:
-            self.data = np.array(datanew)
-            self.ntraces = self.data.shape[0]
-            self.add_rms()
-            self.median = np.nanmedian(self.data, axis=0)
-            self.timestamps = np.array(tnew)
-        else:
-            self.ntraces = 0
-            self.median = np.nan
+    # def lose_allzero_windows(self):
+    #     ixs_nonzero = np.where(np.sum(self.data, axis=-1) != 0.0)[0]
+    #     datanew = self.data[ixs_nonzero]
+    #     tnew = self.timestamps[ixs_nonzero]
+    #     if rank == 0:
+    #         self.data = np.array(datanew)
+    #         self.ntraces = self.data.shape[0]
+    #         self.add_rms()
+    #         self.median = np.nanmedian(self.data, axis=0)
+    #         self.timestamps = np.array(tnew)
+    #     else:
+    #         self.ntraces = 0
+    #         self.median = np.nan
 
     def extend(self, new_data, new_timestamps,
                new_fs, keep_duration=0):
@@ -136,7 +139,6 @@ class CCDataset(object):
         :param ref: reference trace, e.g. from another file
 
         """
-        super(CCDataset, self).__init__()
 
         self.station_pair = os.path.splitext(os.path.basename(inputfile))[0]
         self.station_pair = os.path.splitext(self.station_pair)[0]
@@ -219,9 +221,10 @@ class CCDataset(object):
 
         for i in range(nshare):
             tstamp = self.datafile["corr_windows"]["timestamps"][rank * nshare + n_corr_min + i]
-            if tstamp == "":
-                continue
-            tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+            try:
+                tstmp = '{},{},{},{},{}'.format(*tstamp.split('.')[0: 5])
+            except IndexError:
+                pass
             timestamps[i] = UTCDateTime(tstmp).timestamp
 
         # gather
@@ -239,6 +242,11 @@ class CCDataset(object):
                 alltimestamps[ixdata] = UTCDateTime(tstmp).timestamp
             print("Read to memory from {} to {}".format(UTCDateTime(alltimestamps[0]),
                                                         UTCDateTime(alltimestamps[-1])))
+            # remove windows where there are no data
+            ixs_nonzero = np.where(alltimestamps > 0.0)[0]
+            alldata = alldata[ixs_nonzero, :]
+            alltimestamps = alltimestamps[ixs_nonzero]
+
             if 0 in list(self.dataset.keys()):
                 self.dataset[0].extend(alldata, alltimestamps, fs, keep_duration=keep_duration)
             else:
@@ -590,7 +598,7 @@ class CCDataset(object):
                 new_win_dat.append(to_window[ix, ix_to_keep])
             newlag = self.dataset[stacklevel].lag[ix_to_keep]
             self.dataset[stacklevel].lag = newlag
-            self.dataset[stacklevel].data = new_win_dat
+            self.dataset[stacklevel].data = np.array(new_win_dat)
             self.dataset[stacklevel].npts = len(ix_to_keep)
 
     def run_measurement(self, indices, to_measure, timestamps,
