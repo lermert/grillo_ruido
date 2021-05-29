@@ -90,6 +90,7 @@ for iinf, input_file in enumerate(input_files):
     # find max. dvv that will just be short of a cycle skip
     # then extend by skipfactor
     for twin in twins[ixf]:
+        print("Adressing window {}, {} s...".format(*twin))
         maxdvv = skipfactor * 1. / (2. * freq_band[1] *
                                     max(abs(np.array(twin))))
         conf["maxdvv"] = maxdvv
@@ -112,7 +113,10 @@ for iinf, input_file in enumerate(input_files):
         output = pd.concat([output, output_table], ignore_index=True)
 
         comm.barrier()
-        del dset.dataset[1]
+        if rank == 0:
+            del dset.dataset[1]
+        else:
+            pass
 
 # at the end write all to file
 if rank == 0:
