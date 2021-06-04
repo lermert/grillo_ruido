@@ -59,33 +59,33 @@ class CCData(object):
     #         self.ntraces = 0
     #         self.median = np.nan
 
-    def extend(self, new_data, new_timestamps,
-               new_fs, keep_duration=0):
-        # to do:
-        # check compatibility of sampling rates and npts
-        if new_fs != self.fs:
-            raise ValueError("Cannot extend because old and new sampling rates do not match.")
-        if self.kmeans_labels is not None:
-            raise ValueError("Datasets with assigned clusters should not be extended. Build full dataset first, then cluster.")
-        # find indices to keep
-        if keep_duration >= 0:
-            ixs_t_keep = np.where((self.timestamps[-1] - self.timestamps) <= keep_duration)[0]
-        else:  # keep all if negative keep_duration
-            ixs_t_keep = np.arange(len(self.timestamps))
+    # def extend(self, new_data, new_timestamps,
+    #            new_fs, keep_duration=0):
+    #     # to do:
+    #     # check compatibility of sampling rates and npts
+    #     if new_fs != self.fs:
+    #         raise ValueError("Cannot extend because old and new sampling rates do not match.")
+    #     if self.kmeans_labels is not None:
+    #         raise ValueError("Datasets with assigned clusters should not be extended. Build full dataset first, then cluster.")
+    #     # find indices to keep
+    #     if keep_duration >= 0:
+    #         ixs_t_keep = np.where((self.timestamps[-1] - self.timestamps) <= keep_duration)[0]
+    #     else:  # keep all if negative keep_duration
+    #         ixs_t_keep = np.arange(len(self.timestamps))
 
-        data = [d for d in self.data[ixs_t_keep]]
-        timestamps = [t for t in self.timestamps[ixs_t_keep]]
+    #     data = [d for d in self.data[ixs_t_keep]]
+    #     timestamps = [t for t in self.timestamps[ixs_t_keep]]
 
-        # overwrite data by new and old[from index onwards] data together
-        data.extend(new_data)
-        self.data = np.array(data)
-        # overwrite timestamps by new and old[from index onwards] data together
-        timestamps.extend(new_timestamps)
-        self.timestamps = np.array(timestamps)
-        # overwrite ntraces by new and old[from index onwards] data together
-        self.ntraces = len(self.timestamps)
-        self.rms = self.add_rms()
-        self.median = np.nanmedian(self.data, axis=0)
+    #     # overwrite data by new and old[from index onwards] data together
+    #     data.extend(new_data)
+    #     self.data = np.array(data)
+    #     # overwrite timestamps by new and old[from index onwards] data together
+    #     timestamps.extend(new_timestamps)
+    #     self.timestamps = np.array(timestamps)
+    #     # overwrite ntraces by new and old[from index onwards] data together
+    #     self.ntraces = len(self.timestamps)
+    #     self.rms = self.add_rms()
+    #     self.median = np.nanmedian(self.data, axis=0)
 
     def add_rms(self):
         # add root mean square of raw cross-correlation windows
@@ -97,7 +97,6 @@ class CCData(object):
 
         for i, dat in enumerate(self.data):
             rms[i] = np.sqrt(np.sum((dat - dat.mean()) ** 2) / len(dat))
-           
         self.rms = rms
 
     def align(self, t1, t2, ref, plot=False):
@@ -247,12 +246,36 @@ class CCDataset(object):
             alldata = alldata[ixs_nonzero, :]
             alltimestamps = alltimestamps[ixs_nonzero]
 
-            if 0 in list(self.dataset.keys()):
-                self.dataset[0].extend(alldata, alltimestamps, fs, keep_duration=keep_duration)
-            else:
-                self.dataset[0] = CCData(alldata, alltimestamps, fs)
+            # if 0 in list(self.dataset.keys()):
+            #     self.dataset[0].extend(alldata, alltimestamps, fs, keep_duration=keep_duration)
+            # else:
+            #     self.dataset[0] = CCData(alldata, alltimestamps, fs)
+            # find indices to keep
+
+            try:
+                if keep_duration != 0:
+                    if keep_duration > 0:
+                        ixcut = np.argmin(((self.dataset[0].timestamps[-1] -
+                                            self.dataset[0].timestamps) -
+                                            keep_duration) ** 2)
+
+                    else:  # keep all if negative keep_duration
+                        ixcut = 0
+                    self.dataset[0].data = np.concatenate((self.dataset[0].data[ixcut:], np.array(alldata, ndmin=2)), axis=0)
+                    self.dataset[0].timestamps = np.concatenate((self.dataset[0].timestamps[ixcut:], alltimestamps), axis=None)
+                else:
+                    self.dataset[0].data = np.array(alldata, ndmin=2)
+                    self.dataset[0].timestamps = alltimestamps
+            except KeyError:
+                self.dataset[0] = CCData(np.array(alldata, ndmin=2), alltimestamps, fs)
+                print(self.dataset[0].data.shape)
+
+            self.dataset[0].ntraces = self.dataset[0].data.shape[0]
+            self.dataset[0].npts = self.dataset[0].data.shape[1]
+            self.dataset[0].add_rms()
+            self.dataset[0].median = np.nanmedian(self.dataset[0].data, axis=0)
         else:
-            self.dataset = None
+            self.dataset = {}
 
         # only debugging
         # if rank == 0:
@@ -394,7 +417,7 @@ class CCDataset(object):
         t_to_stack = self.dataset[stacklevel_in].timestamps.copy()
 
         if stackmode == "linear":
-            s = to_stack[ixs].sum(axis=0)
+            s = to_stack[ixs].sum(axis=0).copy()
             newstacks = s / len(ixs)
             newt = t_to_stack[ixs[0]]
         elif stackmode == "median":
@@ -406,12 +429,17 @@ class CCDataset(object):
             newt = t_to_stack[ixs[0]]
         else:
             raise ValueError("Unknown stacking mode {}".format(stackmode))
+        
+        try:
+            self.dataset[stacklevel_out].data = np.concatenate((self.dataset[stacklevel_out].data, np.array(newstacks, ndmin=2)), axis=0)
+            self.dataset[stacklevel_out].timestamps = np.concatenate((self.dataset[stacklevel_out].timestamps, newt), axis=None)
 
-        try:  # elif stacklevel_out in list(self.dataset.keys()) and overwrite == False:
-            self.dataset[stacklevel_out].extend([newstacks], [newt],
-                                                self.dataset[stacklevel_in].fs, keep_duration=-1)
         except KeyError:
-            self.dataset[stacklevel_out] = CCData([newstacks], [newt], self.dataset[stacklevel_in].fs)
+            self.dataset[stacklevel_out] = CCData(np.array(newstacks, ndmin=2), newt, self.dataset[stacklevel_in].fs)
+            print(self.dataset[stacklevel_out].data.shape)
+        
+        self.dataset[stacklevel_out].ntraces = self.dataset[stacklevel_out].data.shape[0]
+
 
     def data_to_dataframe(self, lag0, lag1, stacklevel, normalize=False):
         if rank != 0:
@@ -460,6 +488,7 @@ class CCDataset(object):
             nrest = ndata % size
             to_filter = self.dataset[stacklevel].data[0: ndata - nrest]
             npts = self.dataset[stacklevel].npts
+            print(npts)
             fs = self.dataset[stacklevel].fs
         else:
             nshare = None
@@ -788,6 +817,103 @@ class CCDataset(object):
         else:
             return([],[],[],[],[],[])
 
+    def measure_dvv_ser(self, ref, f0, f1, stacklevel=1, method="stretching",
+                        ngrid=90, dvv_bound=0.03,
+                        measure_smoothed=False, indices=None,
+                        moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
+                        len_dtw_msr=None):
+
+        to_measure = self.dataset[stacklevel].data
+        lag = self.dataset[stacklevel].lag
+        timestamps = self.dataset[stacklevel].timestamps
+        # print(timestamps)
+        fs = self.dataset[stacklevel].fs
+
+        if len(to_measure) == 0:
+            return()
+
+        reference = ref.copy()
+        para = {}
+        para["dt"] = 1. / fs
+        para["twin"] = [lag[0], lag[-1] + 1. / fs]
+        para["freq"] = [f0, f1]
+
+        if indices is None:
+            indices = range(len(to_measure))
+
+        dvv_times = np.zeros(len(indices))
+        ccoeff = np.zeros(len(indices))
+        best_ccoeff = np.zeros(len(indices))
+
+        if method in ["stretching", "mwcs"]:
+            dvv = np.zeros((len(indices), 1))
+            dvv_error = np.zeros((len(indices), 1))
+        elif method in ["cwt-stretching"]:
+            if len_dtw_msr is None:
+                testmsr = wts_dvv(reference, reference, True,
+                                  para, dvv_bound, ngrid)
+                dvv = np.zeros((len(indices), len(testmsr[1])))
+                dvv_error = np.zeros((len(indices), len(testmsr[1])))
+        elif method in ["dtw"]:
+            if len_dtw_msr is None:
+                len_dtw_msr = []
+                testmsr = dtw_dvv(reference, reference,
+                                  para, maxLag=maxlag_dtw,
+                                  b=10, direction=1)
+                len_dtw_msr.append(len(testmsr[0]))
+                len_dtw_msr.append(testmsr[1].shape)
+
+            dvv = np.zeros((len(indices), len_dtw_msr[0]))
+            dvv_error = np.zeros((len(indices), *len_dtw_msr[1]))
+        else:
+            raise ValueError("Unknown measurement method {}.".format(method))
+
+        cnt = 0
+        for i, tr in enumerate(to_measure):
+            if i not in indices:
+                continue
+
+            if method == "stretching":
+                dvvp, delta_dvvp, coeffp, cdpp = stretching_vect(reference, tr,
+                                                                 dvv_bound,
+                                                                 ngrid, para)
+                cwtfreqs = []
+            elif method == "dtw":
+                dvv_bound = int(dvv_bound)
+                warppath, dist,  \
+                    coeffor, coeffshift = dtw_dvv(reference, tr,
+                                                  para, maxLag=maxlag_dtw,
+                                                  b=dvv_bound, direction=1)
+                coeffp = coeffshift
+                cdpp = coeffor
+                delta_dvvp = dist
+                dvvp = warppath
+                cwtfreqs = []
+            elif method == "mwcs":
+                ixsnonzero = np.where(reference != 0.0)
+                dvvp, errp = mwcs_dvv(reference[ixsnonzero],
+                                      tr[ixsnonzero],
+                                      moving_window_length,
+                                      slide_step, para)
+                delta_dvvp = errp
+                coeffp = np.nan
+                cdpp = np.nan
+                cwtfreqs = []
+            elif method == "cwt-stretching":
+                cwtfreqs, dvvp, errp = wts_dvv(reference, tr, True, 
+                                               para, dvv_bound, ngrid)
+                delta_dvvp = errp
+                coeffp = np.nan
+                cdpp = np.nan
+
+            dvv[cnt, :] = dvvp
+            dvv_times[cnt] = timestamps[i]
+            ccoeff[cnt] = cdpp
+            # print(ccoeff[cnt])
+            best_ccoeff[cnt] = coeffp
+            dvv_error[cnt, :] = delta_dvvp
+            cnt += 1
+        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
 
     def interpolate_stacks(self, new_fs, stacklevel=1):
         if rank != 0:
@@ -1046,51 +1172,52 @@ class CCDataset(object):
                     moving_window_length=None, slide_step=None, maxlag_dtw=0.0,
                     len_dtw_msr=None):
 
-        if rank == 0:
-            cwtfreqs = None
-            to_measure = self.dataset[stacklevel].data
-            lag = self.dataset[stacklevel].lag
-            timestamps = self.dataset[stacklevel].timestamps
-            # print(timestamps)
-            fs = self.dataset[stacklevel].fs
+        if stacklevel not in self.dataset.keys():
+            return([], [], [], [], [], [])
 
-            if len(to_measure) == 0:
-                return()
+        to_measure = self.dataset[stacklevel].data
+        lag = self.dataset[stacklevel].lag
+        timestamps = self.dataset[stacklevel].timestamps
+        # print(timestamps)
+        fs = self.dataset[stacklevel].fs
 
-            reference = ref.copy()
-            para = {}
-            para["dt"] = 1. / fs
-            para["twin"] = [lag[0], lag[-1] + 1. / fs]
-            para["freq"] = [f0, f1]
+        if len(to_measure) == 0:
+            return([], [], [], [], [], [])
 
-            if indices is None:
-                indices = range(len(to_measure))
+        reference = ref.copy()
+        para = {}
+        para["dt"] = 1. / fs
+        para["twin"] = [lag[0], lag[-1] + 1. / fs]
+        para["freq"] = [f0, f1]
 
-            dvv_times = np.zeros(len(indices))
-            ccoeff = np.zeros((len(indices), 1))
-            best_ccoeff = np.zeros((len(indices), 1))
+        if indices is None:
+            indices = range(len(to_measure))
 
-            dvv = np.zeros((len(indices), 1))
-            dvv_error = np.zeros((len(indices), 1)) 
+        dvv_times = np.zeros(len(indices))
+        ccoeff = np.zeros((len(indices), 1))
+        best_ccoeff = np.zeros((len(indices), 1))
 
-            cnt = 0
-            for i, tr in enumerate(to_measure):
-                if i not in indices:
-                    continue
+        dvv = np.zeros((len(indices), 1))
+        dvv_error = np.zeros((len(indices), 1))
 
-                if method == "stretching":
-                    dvvp, delta_dvvp, coeffp, cdpp = stretching_vect(reference, tr,
-                                                            dvv_bound, ngrid, para)
-                    cwtfreqs = []
-                else:
-                    raise NotImplementedError("I have only stretching here.")
-                dvv[cnt, :] = dvvp
-                dvv_times[cnt] = timestamps[i]
-                ccoeff[cnt, :] = cdpp
-                # print(ccoeff[cnt])
-                best_ccoeff[cnt, :] = coeffp
-                dvv_error[cnt, :] = delta_dvvp
-                cnt += 1
-            return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
-        else:
-            return([],[],[],[],[], [])
+        cnt = 0
+        for i, tr in enumerate(to_measure):
+            if i not in indices:
+                continue
+
+            if method == "stretching":
+                dvvp, delta_dvvp, coeffp, cdpp = stretching_vect(reference, tr,
+                                                                 dvv_bound,
+                                                                 ngrid,
+                                                                 para)
+                cwtfreqs = []
+            else:
+                raise NotImplementedError("I have only stretching here.")
+            dvv[cnt, :] = dvvp
+            dvv_times[cnt] = timestamps[i]
+            ccoeff[cnt, :] = cdpp
+            # print(ccoeff[cnt])
+            best_ccoeff[cnt, :] = coeffp
+            dvv_error[cnt, :] = delta_dvvp
+            cnt += 1
+        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
