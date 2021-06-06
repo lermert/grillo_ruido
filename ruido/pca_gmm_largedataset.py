@@ -31,8 +31,8 @@ for ixsta, station in enumerate(stations):
 
     datafiles = glob(os.path.join(input_directory,
                                   "*{}*{}*{}.*.h5".format(station,
-                                                            ch1,
-                                                            ch2)))
+                                                          ch1,
+                                                          ch2))).sort()
     print(datafiles)
 
     dset = CCDataset(datafiles[0])
