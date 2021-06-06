@@ -1,4 +1,4 @@
-from Function_Clustering_DFs import pca, gmm
+from Function_Clustering_DFs import run_pca, gmm
 import numpy as np
 from ruido.cc_dataset_mpi import CCDataset, CCData
 import os
@@ -7,11 +7,11 @@ from obspy import UTCDateTime
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 # input --------------------------------------------------------
-input_directory = "../spectrograms/stacks_uwork"  #"/media/lermert/Ablage/corrs_from_workstation"
+input_directory = "../spectrograms/stacks_uwork"  #"/media/lermert/Ablage/corrs_from_workstation"  #
 stations = ["UNM",]
 ch1s = ["BHZ",]
-ch2s = ["BHN",]
-fmins = [0.5, 1.0]
+ch2s = ["BHZ",]
+fmins = [2.0, 4.0]
 do_window = True
 twin_mid = 0.0
 filt_type = "bandpass"
@@ -73,12 +73,14 @@ for ixsta, station in enumerate(stations):
         #window
         dset.window_data(t_mid=twin_mid, hw=twin_hw,
                          window_type="tukey", tukey_alpha=0.5,
-                         stacklevel=1, cutout=True)
+                         stacklevel=1, cutout=False)
 
         # perform PCA on this random subset
-        pca_rand = pca(dset.dataset[1].data, min_cumul_var_perc=expl_var)
+        X = StandardScaler().fit_transform(dset.dataset[1].data)
+        pca_rand = run_pca(X, min_cumul_var_perc=expl_var)
         # pca output is an array with shape (nsamples_per_file * nr. of files, n pcas)
-        print(pca_rand)
+        # just for testing, run the Gaussian mixture here
+        # gm = gmm(pca_rand.transform(X), range(1, 12))
 
         all_pccs = []
         all_timestamps = []
@@ -88,23 +90,22 @@ for ixsta, station in enumerate(stations):
             print(datafile)
             dset.add_datafile(datafile)
             dset.data_to_memory(keep_duration=0)
-            print(dset)
             dset.filter_data(stacklevel=0, filter_type=filt_type,
                              f_hp=fmin, f_lp=fmax, maxorder=filt_maxord)
             dset.window_data(t_mid=twin_mid, hw=twin_hw,
                              window_type="tukey", tukey_alpha=0.5,
-                             stacklevel=0, cutout=True)
-            pca_output = pca_rand.fit_transform(dset.dataset[0].data)
+                             stacklevel=0, cutout=False)
+            X = StandardScaler().fit_transform(dset.dataset[0].data)
+            pca_output = pca_rand.transform(X)
 
             all_pccs.extend(pca_output)
             all_timestamps.extend(dset.dataset[0].timestamps)
         all_pccs = np.array(all_pccs)
         all_timestamps = np.array(all_timestamps)
-        print(all_pccs, all_pccs.shape)
 
         # do the clustering
         gmmodels, n_clusters, gmixfinPCA, probs, BICF = gmm(all_pccs, nclust)
-        print(gmixfinPCA)
+        print(n_clusters, np.unique(gmixfinPCA))
         # save the cluster labels
         labels = np.zeros((2, len(all_timestamps)))
         labels[0] = all_timestamps

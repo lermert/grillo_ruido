@@ -118,6 +118,7 @@ for iinf, input_file in enumerate(input_files):
         comm.barrier()
         if rank == 0:
             del dset.dataset[1]
+            del dset.dataset[2]
         else:
             pass
 

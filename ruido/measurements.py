@@ -469,6 +469,7 @@ def measurement_list(dset, config, twin, freq_band, rank, comm,
 
                 ixs_stack = dset.group_for_stacking(t0=r_window[0].timestamp, stacklevel=1,
                                                     duration=r_window[1].timestamp - r_window[0].timestamp)
+                print(ixs_stack)
                 dset.stack(ixs_stack, stacklevel_in=1, stacklevel_out=2)
             references = dset.dataset[2].data
         elif config["rtype"] == "bootstrap":

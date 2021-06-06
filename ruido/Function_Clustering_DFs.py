@@ -58,7 +58,7 @@ def Clustering_PCA_GMM(mat, range_GMM, n_pca_min=3, min_cumul_var_perc=0.9):
     return pca_output, cumul_var_perc, models, n_clusters, gmixfinPCA, probs, BICF
 
 
-def pca(mat, n_pca_min=3, min_cumul_var_perc=0.9):
+def run_pca(mat, n_pca_min=3, min_cumul_var_perc=0.9):
     """
     Inputs:
         mat: Matrix of correlation functions
@@ -80,13 +80,14 @@ def pca(mat, n_pca_min=3, min_cumul_var_perc=0.9):
     n_pca = n_pca_min
     while cumul_var_perc < min_cumul_var_perc:
         pca = PCA(n_components=n_pca)
-        pca_output = pca.fit_transform(mat)
+        pca = pca.fit(mat)
         # Cumulative variance
         cumul_var_perc = np.cumsum(pca.explained_variance_ratio_)[-1]
         n_pca += 1
 
     print('The first ' + str(n_pca-1) + ' PCs explain ' + str(cumul_var_perc) +
           ' % of the cumulative variance')
+
     return(pca)
 
 
