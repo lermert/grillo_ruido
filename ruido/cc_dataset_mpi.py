@@ -29,7 +29,7 @@ class CCData(object):
     Class for keeping cross-correlation data and stacks of cross-correlation data
     """
 
-    def __init__(self, data, timestamps, fs, kmeans_labels=None):
+    def __init__(self, data, timestamps, fs):
 
         self.data = np.array(data)
         self.timestamps = np.array(timestamps)
@@ -38,10 +38,7 @@ class CCData(object):
         self.npts = self.data.shape[1]
         self.max_lag = (self.npts - 1) / 2 / self.fs
         self.lag = np.linspace(-self.max_lag, self.max_lag, self.npts)
-        if kmeans_labels is not None:
-            self.kmeans_labels = np.array(kmeans_labels)
-        else:
-            self.kmeans_labels = None
+        self.cluster_labels = None
         self.add_rms()
         self.median = np.nanmedian(self.data, axis=0)
 
@@ -98,6 +95,22 @@ class CCData(object):
         for i, dat in enumerate(self.data):
             rms[i] = np.sqrt(np.sum((dat - dat.mean()) ** 2) / len(dat))
         self.rms = rms
+
+    def add_cluster_labels(self, cluster_label_file):
+
+        c = np.load(cluster_label_file)
+        cl = []
+        for tst in self.timestamps:
+            try:
+                ix = np.where(c[0] == tst)[0][0]
+                # print(ix)
+                # print(c[0, ix], c[1, ix])
+                cl.append(int(c[1, ix]))
+            except IndexError:
+                cl.append(-1)
+        self.cluster_labels = np.array(cl)
+        # print(self.cluster_labels)
+
 
     def align(self, t1, t2, ref, plot=False):
         l0 = np.argmin((self.lag - t1) ** 2)

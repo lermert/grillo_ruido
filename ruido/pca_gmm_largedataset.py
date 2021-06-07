@@ -32,7 +32,8 @@ for ixsta, station in enumerate(stations):
     datafiles = glob(os.path.join(input_directory,
                                   "*{}*{}*{}.*.h5".format(station,
                                                           ch1,
-                                                          ch2))).sort()
+                                                          ch2)))
+    datafiles.sort()
     print(datafiles)
 
     dset = CCDataset(datafiles[0])
@@ -76,6 +77,7 @@ for ixsta, station in enumerate(stations):
                          stacklevel=1, cutout=False)
 
         # perform PCA on this random subset
+        dset.dataset[1].data = np.nan_to_num(dset.dataset[1].data)
         X = StandardScaler().fit_transform(dset.dataset[1].data)
         pca_rand = run_pca(X, min_cumul_var_perc=expl_var)
         # pca output is an array with shape (nsamples_per_file * nr. of files, n pcas)
@@ -95,6 +97,7 @@ for ixsta, station in enumerate(stations):
             dset.window_data(t_mid=twin_mid, hw=twin_hw,
                              window_type="tukey", tukey_alpha=0.5,
                              stacklevel=0, cutout=False)
+            dset.dataset[0].data = np.nan_to_num(dset.dataset[0].data)
             X = StandardScaler().fit_transform(dset.dataset[0].data)
             pca_output = pca_rand.transform(X)
 
