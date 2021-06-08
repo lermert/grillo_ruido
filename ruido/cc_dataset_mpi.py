@@ -34,8 +34,10 @@ class CCData(object):
         self.data = np.array(data)
         self.timestamps = np.array(timestamps)
         self.fs = fs
-        self.ntraces = self.data.shape[0]
         self.npts = self.data.shape[1]
+        self.ntraces = self.data.shape[0]
+
+        self.ntraces = self.data.shape[0]
         self.max_lag = (self.npts - 1) / 2 / self.fs
         self.lag = np.linspace(-self.max_lag, self.max_lag, self.npts)
         self.cluster_labels = None
@@ -84,6 +86,21 @@ class CCData(object):
     #     self.rms = self.add_rms()
     #     self.median = np.nanmedian(self.data, axis=0)
 
+    def remove_nan_segments(self):
+        ntraces = self.data.shape[0]
+        ixfinite = np.isfinite(self.data.sum(axis=1))
+        if ixfinite.sum() == ntraces:
+            return()
+
+        self.data = self.data[ixfinite]
+        ntraces_new = self.data.shape[0]
+        print("Removed {} of {} traces due to NaN values. Data gaps?".format(ntraces - ntraces_new, ntraces))
+        print("Dates of removed segments:")
+        for t in self.timestamps[np.invert(ixfinite)]:
+            print(UTCDateTime(t))
+        self.timestamps = self.timestamps[ixfinite]
+        self.ntraces = ntraces_new
+
     def add_rms(self):
         # add root mean square of raw cross-correlation windows
         # (for selection)
@@ -99,9 +116,12 @@ class CCData(object):
                 rms[i] = 1.0e4  # make the value large so that these windows get discarded
         self.rms = rms
 
-    def add_cluster_labels(self, cluster_label_file):
+    def add_cluster_labels(self, clusters):
 
-        c = np.load(cluster_label_file)
+        if type(clusters) == str:
+            c = np.load(clusters)
+        else:
+            c = clusters
         cl = []
         for tst in self.timestamps:
             try:
@@ -285,11 +305,11 @@ class CCDataset(object):
                     self.dataset[0].timestamps = alltimestamps
             except KeyError:
                 self.dataset[0] = CCData(np.array(alldata, ndmin=2), alltimestamps, fs)
-                print(self.dataset[0].data.shape)
 
             self.dataset[0].ntraces = self.dataset[0].data.shape[0]
             self.dataset[0].npts = self.dataset[0].data.shape[1]
             self.dataset[0].add_rms()
+            self.dataset[0].remove_nan_segments()
             self.dataset[0].median = np.nanmedian(self.dataset[0].data, axis=0)
         else:
             self.dataset = {}
@@ -889,7 +909,8 @@ class CCDataset(object):
         for i, tr in enumerate(to_measure):
             if i not in indices:
                 continue
-
+            if np.any(np.isnan(tr)):
+                continue
             if method == "stretching":
                 dvvp, delta_dvvp, coeffp, cdpp = stretching_vect(reference, tr,
                                                                  dvv_bound,

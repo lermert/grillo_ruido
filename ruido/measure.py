@@ -64,10 +64,11 @@ if input_files == []:
 # set up the dataframe to collect the results
 output = pd.DataFrame(columns=["timestamps", "t0_s", "t1_s", "f0_Hz",  "f1_Hz",
                                "tag", "dvv_max", "dvv", "cc_before", "cc_after",
-                               "dvv_err"])
+                               "dvv_err", "cluster"])
 
 for iinf, input_file in enumerate(input_files):
-    ixf = int(os.path.splitext(input_file)[0].split("_")[-2])
+    ixf = int(os.path.splitext(input_file)[0].split("_")[-2][2:])
+    cl_label = int(os.path.splitext(input_file)[0].split("_")[-1][2:])
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])
@@ -115,6 +116,8 @@ for iinf, input_file in enumerate(input_files):
         print(dset)
 
         output_table = run_measurement(dset, conf, twin, freq_band, rank, comm)
+        if rank == 0:
+            output_table["cluster"] = np.ones(len(output_table)) * cl_label
         output = pd.concat([output, output_table], ignore_index=True)
 
         comm.barrier()

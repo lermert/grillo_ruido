@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import os
 import h5py
 from glob import glob
+from warnings import warn
 from mpi4py import MPI
 from cmcrameri import cm
 comm = MPI.COMM_WORLD
@@ -44,7 +45,7 @@ clusterdir = "results_from_uwork"
 # =================================
 
 # Script:
-def add_stacks(dset, t_running=None):
+def add_stacks(dset, t_running_in=None):
 
     # make a difference whether there are cluster labels or not.
     # if there are then use them for selection.
@@ -52,25 +53,35 @@ def add_stacks(dset, t_running=None):
     if dset.dataset[0].cluster_labels is not None:
 
         for clabel in np.unique(dset.dataset[0].cluster_labels):
-            print(clabel)
+            print("cluster ", clabel)
+            if clabel == -1:   # the unmatched timestamps
+                warn("Unmatched timestamps present, is this ok?")
+                continue
 
-            if t_running is None:
+            if t_running_in is None:
                 t_running = max(t0, dset.dataset[0].timestamps.min())
+            else:
+                t_running = t_running_in
 
             while t_running < min(t1, dset.dataset[0].timestamps.max()):
-                stimes = dset.group_for_stacking(t_running, duration=duration, cluster_label=clabel)
-                stimes = dset.select_for_stacking(stimes, "rms_percentile", bootstrap=False,
-                                                  perc=percentile_rms, mode="upper")
-                print(len(stimes))
+
+                stimes = dset.group_for_stacking(t_running, duration=duration,
+                                                 cluster_label=clabel)
+                stimes = dset.select_for_stacking(stimes, "rms_percentile",
+                                                  bootstrap=False,
+                                                  perc=percentile_rms,
+                                                  mode="upper")
                 if stimes == []:
-                    # print(t_running, "no windows:)
+                    print("No windows, ", UTCDateTime(t_running))
                     t_running += step
                     continue
                 if len(stimes) < minimum_stack_len:
+                    print("Not enough windows, ", UTCDateTime(t_running))
                     t_running += step
                     continue
 
-                dset.stack(np.array(stimes), stackmode=stackmode, epsilon_robuststack=robuststack_epsilon,
+                dset.stack(np.array(stimes), stackmode=stackmode,
+                           epsilon_robuststack=robuststack_epsilon,
                            stacklevel_out=clabel+1)
                 t_running += step
 
@@ -103,19 +114,31 @@ for cpair in comp_pairs:
     
     # loop over frequency bands
     for ixf, freq_band in enumerate(freq_bands):
+
+        if use_clusters:
+            clusterfile = os.path.join(clusterdir,
+                                       "{}.{}.{}.{}-{}Hz.gmmlabels.npy".format(
+                                        station, cpair[0], cpair[1], freq_band[0],
+                                        freq_band[1]))
+            clusters = np.load(clusterfile)
+
         # track how long it takes
         trun = time.time()
         trun0 = trun
 
         # read in the data, one file at a time, adding stacks as we go along
         dset = CCDataset(input_files[0])
+
         for i, f in enumerate(input_files):
             if i == 0:
                 dset.data_to_memory(n_corr_max=None)
+                dset.dataset[0].add_cluster_labels(clusters)
             else:
                 dset.add_datafile(f)
                 dset.data_to_memory(keep_duration=3*duration)
+                dset.dataset[0].add_cluster_labels(clusters)
 
+            print(UTCDateTime(clusters[0, 0]), UTCDateTime(clusters[0, -1]))
 
             if rank == 0:
                 print("Read ")
@@ -127,24 +150,15 @@ for cpair in comp_pairs:
                              stacklevel=0, filter_type=filter_type,
                              maxorder=filter_maxord, npool=8)
             if rank == 0:
-                print("Filter ")
+                print("Filtered ")
                 print(time.time() - trun)
-                dset.dataset[0].add_rms()
-                if use_clusters:
-                    clusterfile = os.path.join(clusterdir, 
-                                               "{}.{}.{}.{}-{}Hz.gmmlabels.npy".format(station,
-                                                                                       cpair[0],
-                                                                                       cpair[1],
-                                                                                       freq_band[0],
-                                                                                       freq_band[1]))
-                    dset.dataset[0].add_cluster_labels(clusterfile)
 
                 try:
                     t_running = dset.dataset[1].timestamps.max() + step
                 except KeyError:
-                    t_running = max(dset.dataset[0].timestamps[0], t0)
+                    t_running = max(dset.dataset[0].timestamps.min(), t0)
                 add_stacks(dset, t_running)
-                print("stacked ")
+                print("Stacked ")
                 print(dset)
                 print(time.time() - trun)
             else:
