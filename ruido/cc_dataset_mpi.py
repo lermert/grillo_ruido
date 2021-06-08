@@ -196,9 +196,11 @@ class CCDataset(object):
         output += "Cross-correlation dataset: {}\n".format(self.station_pair)
         for (k, v) in self.dataset.items():
             output += "Contains {} traces on stacking level {}\n".format(v.ntraces, k)
-            if v.ntraces != 0:
+            try:
                 output += "Starting {}, ending {}\n".format(UTCDateTime(v.timestamps[0]).strftime("%d.%m.%Y"),
                                                             UTCDateTime(v.timestamps[-1]).strftime("%d.%m.%Y"))
+            except IndexError:
+                pass
         return(output)
 
     def data_to_envelope(self, stacklevel=1):
