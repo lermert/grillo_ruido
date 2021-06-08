@@ -165,7 +165,7 @@ for cpair in comp_pairs:
                     continue
                 outfile = output_file_basename.format(*cpair, 
                     "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\
-                        "-" + UTCDateTime(t1).strftime("%Y") + "_" + str(ixf) + "_" + str(stacklevel))
+                        "-" + UTCDateTime(t1).strftime("%Y") + "_bp" + str(ixf) + "_cl" + str(stacklevel))
                 outfile = h5py.File(outfile, "w")
                 cwin = outfile.create_group("corr_windows")
                 stats = outfile.create_dataset("stats", data=())
