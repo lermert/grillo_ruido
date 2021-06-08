@@ -132,13 +132,17 @@ for cpair in comp_pairs:
         for i, f in enumerate(input_files):
             if i == 0:
                 dset.data_to_memory(n_corr_max=None)
-                dset.dataset[0].add_cluster_labels(clusters)
+                if rank == 0:
+                    dset.dataset[0].add_cluster_labels(clusters)
+                else:
+                    pass
             else:
                 dset.add_datafile(f)
                 dset.data_to_memory(keep_duration=3*duration)
-                dset.dataset[0].add_cluster_labels(clusters)
-
-            print(UTCDateTime(clusters[0, 0]), UTCDateTime(clusters[0, -1]))
+                if rank == 0:
+                    dset.dataset[0].add_cluster_labels(clusters)
+                else:
+                    pass
 
             if rank == 0:
                 print("Read ")
