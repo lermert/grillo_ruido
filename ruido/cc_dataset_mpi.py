@@ -96,7 +96,7 @@ class CCData(object):
             rms[i] = np.sqrt(((dat - dat.mean()) ** 2).mean())
             if np.isnan(rms[i]):
                 print(rms[i], i, dat.mean())
-                rms[i] = 0.0
+                rms[i] = 1.0e4  # make the value large so that these windows get discarded
         self.rms = rms
 
     def add_cluster_labels(self, cluster_label_file):

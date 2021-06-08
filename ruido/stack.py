@@ -139,7 +139,10 @@ for cpair in comp_pairs:
                                                                                        freq_band[1]))
                     dset.dataset[0].add_cluster_labels(clusterfile)
 
-                t_running = dset.dataset[1].timestamps.max() + step
+                try:
+                    t_running = dset.dataset[1].timestamps.max() + step
+                except KeyError:
+                    t_running = max(dset.dataset[0].timestamps[0], t0)
                 add_stacks(dset, t_running)
                 print("stacked ")
                 print(dset)
