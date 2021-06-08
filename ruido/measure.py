@@ -52,6 +52,8 @@ if config["reference_type"] == "list":
                          for entr in config["reference_list"]]
 
 input_files.sort()
+if input_files == []:
+    raise ValueError("No input files found")
 # ====================================================================
 
 # For each input file:
@@ -65,7 +67,7 @@ output = pd.DataFrame(columns=["timestamps", "t0_s", "t1_s", "f0_Hz",  "f1_Hz",
                                "dvv_err"])
 
 for iinf, input_file in enumerate(input_files):
-    ixf = int(os.path.splitext(input_file)[0].split("_")[-1])
+    ixf = int(os.path.splitext(input_file)[0].split("_")[-2])
     station = os.path.basename(input_file.split(".")[1])
     ch1 = os.path.basename(input_file.split(".")[2][0: 3])
     ch2 = os.path.basename(input_file.split(".")[4])

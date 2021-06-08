@@ -22,7 +22,7 @@ input_file_basename = "/media/lermert/Ablage/corrs_from_workstation/G.UNM.*.{}--
 output_file_basename = "G.UNM.{}--G.UNM.{}.ccc.{}.h5"
 years = range(2006, 2022)
 # years = ["../datasets/"]
-comp_pairs =[["BHZ", "BHE"], ["BHZ", "BHN"], ["BHZ", "BHZ"], ["BHN", "BHE"], ["BHN", "BHN"], ["BHE", "BHE"]]
+comp_pairs =[["BHZ", "BHN"], ["BHZ", "BHZ"], ["BHN", "BHE"], ["BHN", "BHN"], ["BHE", "BHE"]]
 station = "UNM"  # for metadata table
 freq_bands = [[0.25, 0.5], [0.5, 1.0], [1.0, 2.0], [2., 4.], [4.0, 8.0]]
 twins_plot = [[-60, 60], [-40., 40.], [-20., 20.], [-10., 10.], [-6., 6.]]
@@ -36,7 +36,7 @@ t0 = UTCDateTime("1995,01,01").timestamp
 t1 = UTCDateTime("2021,02,01").timestamp
 filter_type = "cheby2_bandpass"
 filter_maxord = 12
-percentile_rms = 90
+percentile_rms = 75
 stackmode = "linear"   # linear, median, robust
 robuststack_epsilon = 1.e-3
 use_clusters = True
@@ -156,7 +156,7 @@ for cpair in comp_pairs:
             outplot = os.path.splitext(os.path.basename(input_files[0]))[0] + "{}-{}Hz.stacks.png".format(*freq_band)
             dset.plot_stacks(outfile=outplot, seconds_to_start=twins_plot[ixf][0], seconds_to_show=twins_plot[ixf][1],
                              cmap=colormap, mask_gaps=True, step=step, scale_factor_plotting=scale_factor_plotting,
-                             plot_envelope=False, normalize_all=True, label_style=plotlabel)
+                             plot_envelope=False, normalize_all=True, label_style=plotlabel, stacklevel=list(dset.dataset.keys())[-1])
 
         # save the stacks
         if rank == 0:
