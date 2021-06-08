@@ -29,8 +29,8 @@ twins_plot = [[-60, 60], [-40., 40.], [-20., 20.], [-10., 10.], [-6., 6.]]
 scale_factor_plotting = 1.0
 colormap = cm.bilbao
 plotlabel = "year"
-duration = 5 * 86400.
-step = 5 * 86400.
+duration = 10. * 86400.
+step = 10. * 86400.
 minimum_stack_len = 100
 t0 = UTCDateTime("1995,01,01").timestamp
 t1 = UTCDateTime("2021,02,01").timestamp
@@ -44,7 +44,7 @@ clusterdir = "results_from_uwork"
 # =================================
 
 # Script:
-def add_stacks(dset):
+def add_stacks(dset, t_running=None):
 
     # make a difference whether there are cluster labels or not.
     # if there are then use them for selection.
@@ -54,10 +54,8 @@ def add_stacks(dset):
         for clabel in np.unique(dset.dataset[0].cluster_labels):
             print(clabel)
 
-            if len(dset.dataset) < clabel + 2:
+            if t_running is None:
                 t_running = max(t0, dset.dataset[0].timestamps.min())
-            else:
-                t_running = max(t0, dset.dataset[0].timestamps.min(), dset.dataset[clabel + 1].timestamps.max() + step)
 
             while t_running < min(t1, dset.dataset[0].timestamps.max()):
                 stimes = dset.group_for_stacking(t_running, duration=duration, cluster_label=clabel)
@@ -77,10 +75,8 @@ def add_stacks(dset):
                 t_running += step
 
     else:
-        if len(dset.dataset) == 1:
+        if t_running is None:
             t_running = max(t0, dset.dataset[0].timestamps.min())
-        else:
-            t_running = max(t0, dset.dataset[0].timestamps.min(), dset.dataset[1].timestamps.max() + step)
 
         while t_running < min(t1, dset.dataset[0].timestamps.max()):
             stimes = dset.group_for_stacking(t_running, duration=duration)
@@ -142,7 +138,9 @@ for cpair in comp_pairs:
                                                                                        freq_band[0],
                                                                                        freq_band[1]))
                     dset.dataset[0].add_cluster_labels(clusterfile)
-                add_stacks(dset)
+
+                t_running = dset.dataset[1].timestamps.max() + step
+                add_stacks(dset, t_running)
                 print("stacked ")
                 print(dset)
                 print(time.time() - trun)

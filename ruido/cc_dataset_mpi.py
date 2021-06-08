@@ -93,7 +93,10 @@ class CCData(object):
             return
 
         for i, dat in enumerate(self.data):
-            rms[i] = np.sqrt(np.sum((dat - dat.mean()) ** 2) / len(dat))
+            rms[i] = np.sqrt(((dat - dat.mean()) ** 2).mean())
+            if np.isnan(rms[i]):
+                print(rms[i], i, dat.mean())
+                rms[i] = 0.0
         self.rms = rms
 
     def add_cluster_labels(self, cluster_label_file):
