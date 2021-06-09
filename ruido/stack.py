@@ -184,7 +184,7 @@ for cpair in comp_pairs:
             for stacklevel in dset.dataset.keys():
                 if stacklevel == 0:
                     continue
-                if len(dset.dataset[stacklevel].timestamps) == 0:
+                if dset.dataset[stacklevel].ntraces == 0:
                     continue
                 outfile = output_file_basename.format(*cpair, 
                     "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\

@@ -44,48 +44,6 @@ class CCData(object):
         self.add_rms()
         self.median = np.nanmedian(self.data, axis=0)
 
-    # def lose_allzero_windows(self):
-    #     ixs_nonzero = np.where(np.sum(self.data, axis=-1) != 0.0)[0]
-    #     datanew = self.data[ixs_nonzero]
-    #     tnew = self.timestamps[ixs_nonzero]
-    #     if rank == 0:
-    #         self.data = np.array(datanew)
-    #         self.ntraces = self.data.shape[0]
-    #         self.add_rms()
-    #         self.median = np.nanmedian(self.data, axis=0)
-    #         self.timestamps = np.array(tnew)
-    #     else:
-    #         self.ntraces = 0
-    #         self.median = np.nan
-
-    # def extend(self, new_data, new_timestamps,
-    #            new_fs, keep_duration=0):
-    #     # to do:
-    #     # check compatibility of sampling rates and npts
-    #     if new_fs != self.fs:
-    #         raise ValueError("Cannot extend because old and new sampling rates do not match.")
-    #     if self.kmeans_labels is not None:
-    #         raise ValueError("Datasets with assigned clusters should not be extended. Build full dataset first, then cluster.")
-    #     # find indices to keep
-    #     if keep_duration >= 0:
-    #         ixs_t_keep = np.where((self.timestamps[-1] - self.timestamps) <= keep_duration)[0]
-    #     else:  # keep all if negative keep_duration
-    #         ixs_t_keep = np.arange(len(self.timestamps))
-
-    #     data = [d for d in self.data[ixs_t_keep]]
-    #     timestamps = [t for t in self.timestamps[ixs_t_keep]]
-
-    #     # overwrite data by new and old[from index onwards] data together
-    #     data.extend(new_data)
-    #     self.data = np.array(data)
-    #     # overwrite timestamps by new and old[from index onwards] data together
-    #     timestamps.extend(new_timestamps)
-    #     self.timestamps = np.array(timestamps)
-    #     # overwrite ntraces by new and old[from index onwards] data together
-    #     self.ntraces = len(self.timestamps)
-    #     self.rms = self.add_rms()
-    #     self.median = np.nanmedian(self.data, axis=0)
-
     def remove_nan_segments(self):
         ntraces = self.data.shape[0]
         ixfinite = np.isfinite(self.data.sum(axis=1))
@@ -98,7 +56,13 @@ class CCData(object):
         print("Dates of removed segments:")
         for t in self.timestamps[np.invert(ixfinite)]:
             print(UTCDateTime(t))
-        self.timestamps = self.timestamps[ixfinite]
+
+        if len(ixfinite) > 1:
+            self.timestamps = self.timestamps[ixfinite]
+        elif len(ixfinite) == 1:
+            self.timestamps = np.array([self.timestamps[ixfinite]])
+        else:
+            self.timestamps = []
         self.ntraces = ntraces_new
 
     def add_rms(self):
@@ -196,11 +160,8 @@ class CCDataset(object):
         output += "Cross-correlation dataset: {}\n".format(self.station_pair)
         for (k, v) in self.dataset.items():
             output += "Contains {} traces on stacking level {}\n".format(v.ntraces, k)
-            try:
-                output += "Starting {}, ending {}\n".format(UTCDateTime(v.timestamps[0]).strftime("%d.%m.%Y"),
-                                                            UTCDateTime(v.timestamps[-1]).strftime("%d.%m.%Y"))
-            except IndexError:
-                pass
+            output += "Starting {}, ending {}\n".format(UTCDateTime(v.timestamps[0]).strftime("%d.%m.%Y"),
+                                                        UTCDateTime(v.timestamps[-1]).strftime("%d.%m.%Y"))
         return(output)
 
     def data_to_envelope(self, stacklevel=1):
@@ -222,7 +183,7 @@ class CCDataset(object):
         fs = dict(self.datafile['stats'].attrs)['sampling_rate']
         if "data" in list(self.datafile["corr_windows"].keys()):
             npts = self.datafile['corr_windows']["data"][0].shape[0]
-            ntraces = len(np.where(self.datafile["corr_windows"]["timestamps"][:] != "")[0])
+            ntraces = len(np.where(self.datafile["corr_windows"]["timestamps"])[0])
         else:  #  old file format
             raise NotImplementedError("use cc_dataset_newnewnew with old file format")
 
@@ -284,12 +245,6 @@ class CCDataset(object):
             ixs_nonzero = np.where(alltimestamps > 0.0)[0]
             alldata = alldata[ixs_nonzero, :]
             alltimestamps = alltimestamps[ixs_nonzero]
-
-            # if 0 in list(self.dataset.keys()):
-            #     self.dataset[0].extend(alldata, alltimestamps, fs, keep_duration=keep_duration)
-            # else:
-            #     self.dataset[0] = CCData(alldata, alltimestamps, fs)
-            # find indices to keep
 
             try:
                 if keep_duration != 0:
@@ -1260,4 +1215,4 @@ class CCDataset(object):
             best_ccoeff[cnt, :] = coeffp
             dvv_error[cnt, :] = delta_dvvp
             cnt += 1
-        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
+        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs
