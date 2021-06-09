@@ -184,6 +184,8 @@ for cpair in comp_pairs:
             for stacklevel in dset.dataset.keys():
                 if stacklevel == 0:
                     continue
+                if len(dset.dataset[stacklevel].timestamps) == 0:
+                    continue
                 outfile = output_file_basename.format(*cpair, 
                     "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\
                         "-" + UTCDateTime(t1).strftime("%Y") + "_bp" + str(ixf) + "_cl" + str(stacklevel))
@@ -193,7 +195,7 @@ for cpair in comp_pairs:
                 stats.attrs["channel1"] = station + cpair[0]
                 stats.attrs["channel2"] = station + cpair[1]
                 stats.attrs["distance"] = 0.0
-                stats.attrs["sampling_rate"] = dset.dataset[1].fs
+                stats.attrs["sampling_rate"] = dset.dataset[stacklevel].fs
                 stats.attrs["duration"] = duration
                 stats.attrs["step"] = step
                 stats.attrs["minimum_stack_len"] = minimum_stack_len
