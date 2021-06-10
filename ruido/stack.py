@@ -49,6 +49,9 @@ def add_stacks(dset, t_running_in=None):
 
     # make a difference whether there are cluster labels or not.
     # if there are then use them for selection.
+    if len(dset.dataset) == 0 and rank == 0:
+        print("Nothing to stack. Call data_to_memory first")
+        return()
 
     if dset.dataset[0].cluster_labels is not None:
 

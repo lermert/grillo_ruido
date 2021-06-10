@@ -32,11 +32,13 @@ class CCData(object):
     def __init__(self, data, timestamps, fs):
 
         self.data = np.array(data)
-        self.timestamps = np.array(timestamps)
-        self.fs = fs
         self.npts = self.data.shape[1]
         self.ntraces = self.data.shape[0]
-
+        if self.ntraces == 1:
+            self.timestamps = np.array([timestamps])
+        else:
+            self.timestamps = np.array(timestamps)
+        self.fs = fs        
         self.ntraces = self.data.shape[0]
         self.max_lag = (self.npts - 1) / 2 / self.fs
         self.lag = np.linspace(-self.max_lag, self.max_lag, self.npts)
@@ -1215,4 +1217,4 @@ class CCDataset(object):
             best_ccoeff[cnt, :] = coeffp
             dvv_error[cnt, :] = delta_dvvp
             cnt += 1
-        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs
+        return(dvv, dvv_times, ccoeff, best_ccoeff, dvv_error, cwtfreqs)
