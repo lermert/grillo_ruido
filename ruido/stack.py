@@ -30,6 +30,8 @@ twins_plot = [[-60, 60], [-40., 40.], [-20., 20.], [-10., 10.], [-6., 6.]]
 scale_factor_plotting = 1.0
 colormap = cm.bilbao
 plotlabel = "year"
+whiten = True
+whiten_nsmooth = 10
 duration = 10. * 86400.
 step = 10. * 86400.
 minimum_stack_len = 100
@@ -41,7 +43,7 @@ percentile_rms = 75
 stackmode = "linear"   # linear, median, robust
 robuststack_epsilon = 1.e-3
 use_clusters = True
-clusterdir = "results_from_uwork"
+clusterdir = "/home/lermert/Desktop/CDMX/clustering/results_from_uwork"
 # =================================
 
 # Script:
@@ -153,6 +155,15 @@ for cpair in comp_pairs:
             else:
                 pass
 
+            if whiten:
+                if whiten_nsmooth > 1:
+                    fnorm = "rma"
+                else:
+                    fnorm = "phase_only"
+                dset.post_whiten(f1=freq_band[0] * 0.75,
+                                 f2=freq_band[1] * 1.5,
+                                 npts_smooth=whiten_nsmooth,
+                                 freq_norm=fnorm, stacklevel=0)
             dset.filter_data(f_hp=freq_band[0], f_lp=freq_band[1], taper_perc=0.2,
                              stacklevel=0, filter_type=filter_type,
                              maxorder=filter_maxord, npool=8)

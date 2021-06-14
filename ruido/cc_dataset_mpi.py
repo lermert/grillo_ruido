@@ -569,29 +569,65 @@ class CCDataset(object):
             win[ix_0: ix_1] = 1.0
         return(win)
 
-    def post_whiten(self, f1, f2, npts_smooth=5, stacklevel=0):
-        if rank != 0:
-            raise ValueError("Call this function only on one process")
-        nfft = int(next_fast_len(self.dataset[stacklevel].npts))
-        td_taper = cosine_taper(self.dataset[stacklevel].npts, 0.1)
-        fft_para = {"dt": 1./self.dataset[stacklevel].fs, 
-                     "freqmin": f1,
-                     "freqmax": f2,
-                     "smooth_N": 5,
-                     "freq_norm": "phase_only"}
-        freq = np.fft.fftfreq(n=nfft,
-                              d=1./self.dataset[stacklevel].fs)
-        
-        for i, tr in enumerate(self.dataset[stacklevel].data):
-            spec = np.zeros(freq.shape)
-            # spec = np.fft.rfft(td_taper * tr, n=2*self.dataset[stacklevel].npts)
-            # nume = spec.copy() * taper
-            # nume = self.moving_average(nume, n=npts_smooth)
-            # spec /= nume
-            # self.dataset[stacklevel].data[i, :] = td_taper * np.real(np.fft.irfft(spec,
-            #                                       n=2*self.dataset[stacklevel].npts))[0: self.dataset[stacklevel].npts]
+    def post_whiten(self, f1, f2, npts_smooth=5, freq_norm="rma", stacklevel=0):
+
+        if rank == 0:
+            nfft = int(next_fast_len(self.dataset[stacklevel].npts))
+            td_taper = cosine_taper(self.dataset[stacklevel].npts, 0.1)
+            ndata = len(self.dataset[stacklevel].data)
+            nshare = ndata // size
+            nrest = ndata % size
+            to_filter = self.dataset[stacklevel].data[0: ndata - nrest]
+            npts = self.dataset[stacklevel].npts
+            print(npts)
+            fs = self.dataset[stacklevel].fs
+            freq = np.fft.fftfreq(n=nfft,
+                                  d=1./self.dataset[stacklevel].fs)
+        else:
+            nshare = None
+            to_filter = None
+            npts = None
+            fs = None
+            nrest = None
+            freq = None
+            td_taper = None
+            nfft = None
+        nfft = comm.bcast(nfft, root=0)
+        fs = comm.bcast(fs, root=0)
+        freq = comm.bcast(freq, root=0)
+        nshare = comm.bcast(nshare, root=0)
+        nrest = comm.bcast(nrest, root=0)
+        npts = comm.bcast(npts, root=0)
+        to_filter_part = np.zeros((nshare, npts))
+        td_taper = comm.bcast(td_taper, root=0)
+        fft_para = {"dt": 1./fs,
+                    "freqmin": f1,
+                    "freqmax": f2,
+                    "smooth_N": npts_smooth,
+                    "freq_norm": freq_norm}
+
+        # scatter the arrays
+        comm.Scatter(to_filter, to_filter_part, root=0)
+
+        for i, tr in enumerate(to_filter_part):
             spec = whiten(td_taper * tr, fft_para)
-            self.dataset[stacklevel].data[i, :] = np.real(np.fft.ifft(spec, n=nfft)[0: self.dataset[stacklevel].npts])
+            to_filter_part[i, :] = np.real(np.fft.ifft(spec, n=nfft)[0: npts])
+
+        # pass back
+        # gather
+        comm.Gather(to_filter_part, to_filter, root=0)
+
+        # do the rest
+        if rank == 0 and nrest > 0:
+            filt_rest = []
+            for ixdata in range(ndata - nrest, ndata):
+                tr = self.dataset[stacklevel].data[ixdata, :]
+                spec = whiten(td_taper * tr, fft_para)
+                tr = np.real(np.fft.ifft(spec, n=nfft)[0: npts])
+                filt_rest.append(tr)
+            self.dataset[stacklevel].data[ndata - nrest: ndata] = np.array(filt_rest)
+        else:
+            pass
 
     def moving_average(self, a, n=3):
         if rank != 0:
