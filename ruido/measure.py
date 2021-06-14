@@ -30,7 +30,6 @@ plot_tmax = config["plot_tmax"]
 window_type = config["window_type"]
 skipfactor = config["skipfactor"]
 do_plots = config["plotting"]
-ntraces_min = 30
 # frequency bands
 freq_bands = config["freq_bands"]
 # time windows associated with each frequency band
@@ -78,7 +77,7 @@ for iinf, input_file in enumerate(input_files):
     # read into memory
     dset = CCDataset(input_file)
     dset.data_to_memory()
-    if dset.dataset[0].ntraces < ntraces_min:
+    if len(dset.dataset) == 0:
         continue
     # interpolate and plot the stacks
     if rank == 0:
