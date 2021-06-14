@@ -63,8 +63,8 @@ def measurement_bootstrap(dset, config, twin, freq_band, rank, comm):
     if rank == 0:
         tstmps_bs = dset.dataset[1].timestamps
         last_ix = np.argmin(np.abs(tstmps_bs - tstmps_bs[-1] + ref_duration))
-        tstmps_bs = tstmps_bs[:last_ix]
-
+        if last_ix < len(tstmps_bs):
+            tstmps_bs = tstmps_bs[:last_ix]
     for i in range(bootstrap_n):
         print(dset)
 

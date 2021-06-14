@@ -77,8 +77,7 @@ for iinf, input_file in enumerate(input_files):
     # read into memory
     dset = CCDataset(input_file)
     dset.data_to_memory()
-    if len(dset.dataset) == 0:
-        continue
+
     # interpolate and plot the stacks
     if rank == 0:
         if dset.dataset[0].fs != new_fs:
