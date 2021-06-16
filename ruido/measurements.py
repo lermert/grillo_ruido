@@ -486,7 +486,12 @@ def measurement_list(dset, config, twin, freq_band, rank, comm,
             if len(tstmps_bs[:last_ix]) > 1:
                 tstmps_bs = tstmps_bs[:last_ix]
             for i in range(bootstrap_n):
-                tref = np.random.choice(tstmps_bs)
+                if len(tstmps_bs) > 1:
+                    tref = np.random.choice(tstmps_bs)
+                else:
+                    print("Useless case: only 1 stack.")
+                    print("{}-{}s, {}-{} Hz, {}".format(*twin, *freq_band, UTCDateTime(tstmps_bs[0])))
+                    tref = tstmps_bs[0]
                 print("random t: ", UTCDateTime(tref))
                 ws_ref = dset.group_for_stacking(t0=tref,
                                                  duration=ref_duration,
