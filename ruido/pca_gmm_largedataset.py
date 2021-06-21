@@ -30,7 +30,7 @@ lagmax = 100.0
 # keep as many principal components as needed to explain this level of variance of the data
 expl_var = 0.95
 # nr. of random samples to be pulled from each file
-n_samples_each_file = 1000
+n_samples_each_file = 1000  # int or "all"
 # n clusters to try out; the final number will be based on estimating 
 # the "knee" of the Bayesian information criterion (as implemented by Loic)
 nclust = range(1, 13)
@@ -54,8 +54,11 @@ for ixsta, station in enumerate(stations):
     # select a random subset of traces for PCA
     # here we use dataset key 0 for the raw data read in from each file
     # to retain all the randomly selected windows, we copy them to key 1
-    ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
+    if type(n_samples_each_file) == int:
+        ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
                                   n_samples_each_file)
+    elif n_samples_each_file == "all":
+        ixs_random = range(dset.dataset[0].ntraces)
     dset.dataset[1] = CCData(dset.dataset[0].data[ixs_random].copy(),
                              dset.dataset[0].timestamps[ixs_random].copy(),
                              dset.dataset[0].fs)
@@ -67,9 +70,12 @@ for ixsta, station in enumerate(stations):
         # read the data in
         dset.add_datafile(dfile)
         dset.data_to_memory(keep_duration=0)
-        # use a random subset of each file
-        ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
-                                      n_samples_each_file)
+        # use a random subset of each file (unless "all" requested)
+        if type(n_samples_each_file) == int:
+            ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
+                                  n_samples_each_file)
+        elif n_samples_each_file == "all":
+            ixs_random = range(dset.dataset[0].ntraces)
         newdata = dset.dataset[0].data[ixs_random, :]
         assert (newdata.base is not dset.dataset[0].data)
 

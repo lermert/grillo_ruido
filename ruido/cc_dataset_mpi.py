@@ -1086,7 +1086,8 @@ class CCDataset(object):
 
             if ref is not None:
                 ax1.plot(lag, ref / ref.max(), linewidth = 2.0)
-                ax1.set_ylim([-1, scale_factor_plotting * cnt + np.mean(abs(tr))])
+                ax1.set_ylim([-1. - scale_factor_plotting,
+                             scale_factor_plotting * cnt + np.mean(abs(tr))])
             else:
                 ax1.set_ylim([0 - np.mean(abs(tr)), 
                              scale_factor_plotting * cnt + np.mean(abs(tr))])
