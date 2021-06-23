@@ -19,12 +19,12 @@ rank = comm.Get_rank()
 # =================================
 # INPUT
 # =================================
-input_file_basename = "/media/lermert/Ablage/corrs_from_workstation/G.UNM.*.{}--G.UNM.*.{}.ccc.windows.h5"
-output_file_basename = "G.UNM.{}--G.UNM.{}.ccc.{}.h5"
+input_file_basename = "/media/lermert/Ablage/corrs_from_workstation/G.{}.*.{}--G.{}.*.{}.ccc.windows.h5"
+output_file_basename = "G.{}.{}--G.{}.{}.ccc.{}.h5"
 years = range(2006, 2022)
 # years = ["../datasets/"]
+stations = ["UNM"]
 comp_pairs =[["BHZ", "BHN"], ["BHZ", "BHZ"], ["BHN", "BHE"], ["BHN", "BHN"], ["BHE", "BHE"]]
-station = "UNM"  # for metadata table
 freq_bands = [[0.25, 0.5], [0.5, 1.0], [1.0, 2.0], [2., 4.], [4.0, 8.0]]
 twins_plot = [[-60, 60], [-40., 40.], [-20., 20.], [-10., 10.], [-6., 6.]]
 scale_factor_plotting = 1.0
@@ -111,123 +111,124 @@ def add_stacks(dset, t_running_in=None):
 
 
 # loop over components:
-for cpair in comp_pairs:
-    input_files = []
-    #for yr in years:
-    #    input_files.extend(glob(input_file_basename.format(yr, *cpair)))
-    input_files.extend(glob(input_file_basename.format(*cpair)))
-    
-    # loop over frequency bands
-    for ixf, freq_band in enumerate(freq_bands):
+for station in stations:
+    for cpair in comp_pairs:
+        input_files = []
+        #for yr in years:
+        #    input_files.extend(glob(input_file_basename.format(yr, *cpair)))
+        input_files.extend(glob(input_file_basename.format(station, cpair[0], station, cpair[1])))
+        
+        # loop over frequency bands
+        for ixf, freq_band in enumerate(freq_bands):
 
-        if use_clusters:
-            clusterfile = os.path.join(clusterdir,
-                                       "{}.{}.{}.{}-{}Hz.gmmlabels.npy".format(
-                                        station, cpair[0], cpair[1], freq_band[0],
-                                        freq_band[1]))
-            clusters = np.load(clusterfile)
+            if use_clusters:
+                clusterfile = os.path.join(clusterdir,
+                                           "{}.{}.{}.{}-{}Hz.gmmlabels.npy".format(
+                                            station, cpair[0], cpair[1], freq_band[0],
+                                            freq_band[1]))
+                clusters = np.load(clusterfile)
 
-        # track how long it takes
-        trun = time.time()
-        trun0 = trun
+            # track how long it takes
+            trun = time.time()
+            trun0 = trun
 
-        # read in the data, one file at a time, adding stacks as we go along
-        dset = CCDataset(input_files[0])
+            # read in the data, one file at a time, adding stacks as we go along
+            dset = CCDataset(input_files[0])
 
-        for i, f in enumerate(input_files):
-            if i == 0:
-                dset.data_to_memory(n_corr_max=None)
+            for i, f in enumerate(input_files):
+                if i == 0:
+                    dset.data_to_memory(n_corr_max=None)
+                    if rank == 0:
+                        dset.dataset[0].add_cluster_labels(clusters)
+                    else:
+                        pass
+                else:
+                    dset.add_datafile(f)
+                    dset.data_to_memory(keep_duration=3*duration)
+                    if rank == 0:
+                        dset.dataset[0].add_cluster_labels(clusters)
+                    else:
+                        pass
+
                 if rank == 0:
-                    dset.dataset[0].add_cluster_labels(clusters)
+                    print("Read ")
+                    print(time.time() - trun)
                 else:
                     pass
-            else:
-                dset.add_datafile(f)
-                dset.data_to_memory(keep_duration=3*duration)
+
+                if whiten:
+                    if whiten_nsmooth > 1:
+                        fnorm = "rma"
+                    else:
+                        fnorm = "phase_only"
+                    dset.post_whiten(f1=freq_band[0] * 0.75,
+                                     f2=freq_band[1] * 1.5,
+                                     npts_smooth=whiten_nsmooth,
+                                     freq_norm=fnorm, stacklevel=0)
+                dset.filter_data(f_hp=freq_band[0], f_lp=freq_band[1], taper_perc=0.2,
+                                 stacklevel=0, filter_type=filter_type,
+                                 maxorder=filter_maxord, npool=8)
                 if rank == 0:
-                    dset.dataset[0].add_cluster_labels(clusters)
+                    print("Filtered ")
+                    print(time.time() - trun)
+
+                    try:
+                        t_running = dset.dataset[1].timestamps.max() + step
+                    except KeyError:
+                        t_running = max(dset.dataset[0].timestamps.min(), t0)
+                    add_stacks(dset, t_running)
+                    print("Stacked ")
+                    print(dset)
+                    print(time.time() - trun)
                 else:
                     pass
 
-            if rank == 0:
-                print("Read ")
-                print(time.time() - trun)
-            else:
-                pass
+                comm.barrier()
 
-            if whiten:
-                if whiten_nsmooth > 1:
-                    fnorm = "rma"
-                else:
-                    fnorm = "phase_only"
-                dset.post_whiten(f1=freq_band[0] * 0.75,
-                                 f2=freq_band[1] * 1.5,
-                                 npts_smooth=whiten_nsmooth,
-                                 freq_norm=fnorm, stacklevel=0)
-            dset.filter_data(f_hp=freq_band[0], f_lp=freq_band[1], taper_perc=0.2,
-                             stacklevel=0, filter_type=filter_type,
-                             maxorder=filter_maxord, npool=8)
-            if rank == 0:
-                print("Filtered ")
-                print(time.time() - trun)
+                 # plot, if intended
+            if twins_plot is not None and rank == 0:
+                outplot = os.path.splitext(os.path.basename(input_files[0]))[0] + "{}-{}Hz.stacks.png".format(*freq_band)
+                dset.plot_stacks(outfile=outplot, seconds_to_start=twins_plot[ixf][0], seconds_to_show=twins_plot[ixf][1],
+                                 cmap=colormap, mask_gaps=True, step=step, scale_factor_plotting=scale_factor_plotting,
+                                 plot_envelope=False, normalize_all=True, label_style=plotlabel, stacklevel=list(dset.dataset.keys())[-1])
 
-                try:
-                    t_running = dset.dataset[1].timestamps.max() + step
-                except KeyError:
-                    t_running = max(dset.dataset[0].timestamps.min(), t0)
-                add_stacks(dset, t_running)
-                print("Stacked ")
+            # save the stacks
+            if rank == 0:
                 print(dset)
-                print(time.time() - trun)
-            else:
-                pass
 
-            comm.barrier()
+                for stacklevel in dset.dataset.keys():
+                    if stacklevel == 0:
+                        continue
+                    if dset.dataset[stacklevel].ntraces == 0:
+                        continue
+                    outfile = output_file_basename.format(station, cpair[0], station, cpair[1], 
+                        "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\
+                            "-" + UTCDateTime(t1).strftime("%Y") + "_bp" + str(ixf) + "_cl" + str(stacklevel))
+                    outfile = h5py.File(outfile, "w")
+                    cwin = outfile.create_group("corr_windows")
+                    stats = outfile.create_dataset("stats", data=())
+                    stats.attrs["channel1"] = station + cpair[0]
+                    stats.attrs["channel2"] = station + cpair[1]
+                    stats.attrs["distance"] = 0.0
+                    stats.attrs["sampling_rate"] = dset.dataset[stacklevel].fs
+                    stats.attrs["duration"] = duration
+                    stats.attrs["step"] = step
+                    stats.attrs["minimum_stack_len"] = minimum_stack_len
+                    stats.attrs["freq_band"] = freq_band
+                    stats.attrs["filter_type"] = filter_type
+                    if filter_type == "cheby2_bandpass":
+                        stats.attrs["filter_maxord"] = filter_maxord
+                    stats.attrs["t0"] = t0
+                    stats.attrs["t1"] = t1
+                    stats.attrs["rms_percentile"] = percentile_rms
+                    stats.attrs["stackmode"] = stackmode
+                    if stackmode == "robust":
+                        stats.attrs["robuststack_epsilon"] = robuststack_epsilon
+                    cwin.create_dataset("data", data=dset.dataset[stacklevel].data)
 
-             # plot, if intended
-        if twins_plot is not None and rank == 0:
-            outplot = os.path.splitext(os.path.basename(input_files[0]))[0] + "{}-{}Hz.stacks.png".format(*freq_band)
-            dset.plot_stacks(outfile=outplot, seconds_to_start=twins_plot[ixf][0], seconds_to_show=twins_plot[ixf][1],
-                             cmap=colormap, mask_gaps=True, step=step, scale_factor_plotting=scale_factor_plotting,
-                             plot_envelope=False, normalize_all=True, label_style=plotlabel, stacklevel=list(dset.dataset.keys())[-1])
-
-        # save the stacks
-        if rank == 0:
-            print(dset)
-
-            for stacklevel in dset.dataset.keys():
-                if stacklevel == 0:
-                    continue
-                if dset.dataset[stacklevel].ntraces == 0:
-                    continue
-                outfile = output_file_basename.format(*cpair, 
-                    "stacks_{}days".format(duration//86400) + UTCDateTime(t0).strftime("%Y") +\
-                        "-" + UTCDateTime(t1).strftime("%Y") + "_bp" + str(ixf) + "_cl" + str(stacklevel))
-                outfile = h5py.File(outfile, "w")
-                cwin = outfile.create_group("corr_windows")
-                stats = outfile.create_dataset("stats", data=())
-                stats.attrs["channel1"] = station + cpair[0]
-                stats.attrs["channel2"] = station + cpair[1]
-                stats.attrs["distance"] = 0.0
-                stats.attrs["sampling_rate"] = dset.dataset[stacklevel].fs
-                stats.attrs["duration"] = duration
-                stats.attrs["step"] = step
-                stats.attrs["minimum_stack_len"] = minimum_stack_len
-                stats.attrs["freq_band"] = freq_band
-                stats.attrs["filter_type"] = filter_type
-                if filter_type == "cheby2_bandpass":
-                    stats.attrs["filter_maxord"] = filter_maxord
-                stats.attrs["t0"] = t0
-                stats.attrs["t1"] = t1
-                stats.attrs["rms_percentile"] = percentile_rms
-                stats.attrs["stackmode"] = stackmode
-                if stackmode == "robust":
-                    stats.attrs["robuststack_epsilon"] = robuststack_epsilon
-                cwin.create_dataset("data", data=dset.dataset[stacklevel].data)
-
-                dtp = h5py.string_dtype()
-                cwin.create_dataset("timestamps", shape=dset.dataset[stacklevel].timestamps.shape, dtype=dtp)
-                for ixttsp, tstmp in enumerate(dset.dataset[stacklevel].timestamps):
-                    cwin["timestamps"][ixttsp] = UTCDateTime(tstmp).strftime("%Y.%j.%H.%M.%S")
-                outfile.flush()
-                outfile.close()
+                    dtp = h5py.string_dtype()
+                    cwin.create_dataset("timestamps", shape=dset.dataset[stacklevel].timestamps.shape, dtype=dtp)
+                    for ixttsp, tstmp in enumerate(dset.dataset[stacklevel].timestamps):
+                        cwin["timestamps"][ixttsp] = UTCDateTime(tstmp).strftime("%Y.%j.%H.%M.%S")
+                    outfile.flush()
+                    outfile.close()

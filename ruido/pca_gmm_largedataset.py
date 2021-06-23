@@ -56,7 +56,8 @@ for ixsta, station in enumerate(stations):
     # to retain all the randomly selected windows, we copy them to key 1
     if type(n_samples_each_file) == int:
         ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
-                                  n_samples_each_file)
+                                      min(n_samples_each_file,
+                                      dset.dataset[0].traces))
     elif n_samples_each_file == "all":
         ixs_random = range(dset.dataset[0].ntraces)
     dset.dataset[1] = CCData(dset.dataset[0].data[ixs_random].copy(),
@@ -73,7 +74,8 @@ for ixsta, station in enumerate(stations):
         # use a random subset of each file (unless "all" requested)
         if type(n_samples_each_file) == int:
             ixs_random = np.random.choice(np.arange(dset.dataset[0].ntraces),
-                                  n_samples_each_file)
+                                          min(n_samples_each_file,
+                                          dset.dataset[0].traces))
         elif n_samples_each_file == "all":
             ixs_random = range(dset.dataset[0].ntraces)
         newdata = dset.dataset[0].data[ixs_random, :]
