@@ -1030,7 +1030,7 @@ class CCDataset(object):
     def plot_stacks(self, stacklevel=1, outfile=None, seconds_to_show=20, scale_factor_plotting=0.1,
         plot_mode="heatmap", seconds_to_start=0.0, cmap=plt.cm.bone, mask_gaps=False, step=None, figsize=None,
         color_by_cc=False, normalize_all=False, label_style="month", ax=None, plot_envelope=False, ref=None,
-        mark_17_quake=False, grid=True, marklags=[]):
+        mark_17_quake=False, grid=True, marklags=[], colorful_traces=False):
         if rank != 0:
             raise ValueError("Call this function only on one process")
         if mask_gaps and step == None:
@@ -1068,8 +1068,14 @@ class CCDataset(object):
                     ax1.plot(lag, tr / tr.max() + scale_factor_plotting * cnt,
                              c=cmap[ix_colr], alpha=0.5)
                 else:
-                    ax1.plot(lag, tr / tr.max() + scale_factor_plotting * cnt,
-                             'k', alpha=0.5, linewidth=0.5)
+                    if colorful_traces:
+                        cmap = plt.cm.get_cmap("Spectral", self.dataset[stacklevel].ntraces)
+                        cmap = cmap(range(self.dataset[stacklevel].ntraces))
+                        ax1.plot(lag, tr / tr.max() + scale_factor_plotting * cnt,
+                                linewidth=2., color=cmap[i])
+                    else:
+                        ax1.plot(lag, tr / tr.max() + scale_factor_plotting * cnt,
+                                 'k', alpha=0.5, linewidth=0.5)
 
                 t = t_to_plot[i]
                 if label_style == "month":
@@ -1178,7 +1184,11 @@ class CCDataset(object):
             plt.plot([marklag, marklag], [t_to_plot.min(), t_to_plot.max()], "--", color="b")
 
         if grid:
-            ax1.grid(linestyle=":", color="lawngreen", axis="x")
+            if not colorful_traces:
+                ax1.grid(linestyle=":", color="lawngreen", axis="x")
+            else:
+                ax1.grid(axis="x")
+
         if seconds_to_show - seconds_to_start > 50:
             tickstep = 10.0
         elif seconds_to_show - seconds_to_start > 20:
